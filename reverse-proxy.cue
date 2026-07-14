@@ -104,6 +104,13 @@ import (
 	// unification do not share identifiers).
 	units: _
 
+	// Mixing this spec in declares intent to expose: fail the build when the
+	// config was never filled instead of rendering a bare pair network.
+	#checks: "traefik-proxy/exposes": {
+		require: [#exposes.port, #exposes.rule]
+		why: "mixing #TraefikProxySpec requires #exposes: {port, rule}"
+	}
+
 	#exposes: {
 		// Inherited generic inputs, re-listed so this closed layer admits
 		// them; networkName stays non-optional so #label can reference it.
