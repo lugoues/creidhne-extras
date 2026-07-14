@@ -18,10 +18,14 @@ import (
 //
 //	grafana: creidhne.#Quadlet & ce.#TraefikProxySpec & {
 //	    name: "grafana"
-//	    #exposes: {port: 3000, rule: "Host(`grafana.example.lan`)"}
+//	    #exposes: routes: {
+//	        web: {port: 3000, rule: "Host(`grafana.example.lan`)"}
+//	        api: {port: 3001, rule: "Host(`api.grafana.example.lan`)"}
+//	    }
 //	    units: #container: Container: {
 //	        Network: [units.networks.proxy.#self]
-//	        Label: [#exposes.#label] // nested label block, splices flat
+//	        Label: [#exposes.#label] // every route; or per route:
+//	                                 // [#exposes.routes.web.#label]
 //	    }
 //	}
 //
@@ -94,7 +98,9 @@ import (
 }
 
 // #TraefikProxySpec layers the traefik label DSL on the pair-network pattern.
-// Splice #exposes.#label into the container's Label list.
+// Each #exposes.routes entry is one router/service; all routes share the
+// quadlet's single pair network. Splice #exposes.#label (every route) or a
+// route's own #label into the container's Label list.
 // traefik.docker.network points traefik at the pair network even when the
 // container sits on several networks; without it traefik picks an arbitrary
 // IP (intermittent 502s).
@@ -104,45 +110,64 @@ import (
 	// unification do not share identifiers).
 	units: _
 
-	// Mixing this spec in declares intent to expose: fail the build when the
-	// config was never filled instead of rendering a bare pair network.
+	// Mixing this spec in declares intent to expose: fail the build when no
+	// route was filled instead of rendering a bare pair network, and force
+	// every route's required fields even before its label is placed.
 	#checks: "traefik-proxy/exposes": {
-		require: [#exposes.port, #exposes.rule]
-		why: "mixing #TraefikProxySpec requires #exposes: {port, rule}"
+		assert: len(#exposes.routes) > 0
+		require: list.Concat([
+			[for _, r in #exposes.routes {r.port}],
+			[for _, r in #exposes.routes {r.rule}],
+		])
+		why: "mixing #TraefikProxySpec requires at least one #exposes.routes entry"
 	}
 
 	#exposes: {
 		// Inherited generic inputs, re-listed so this closed layer admits
-		// them; networkName stays non-optional so #label can reference it.
+		// them; networkName stays non-optional so labels can reference it.
 		pair?:       string
 		networkName: string
 		extraOptions?: [...c.#KeyValue]
-		// router keys the traefik router and service.
-		router: string | *name
 
-		// Backend port the container listens on.
-		port!: int & >0 & <65536
-		// Router rule, e.g. "Host(`grafana.example.lan`)". No single quotes:
-		// the emitted label is single-quoted so rules with spaces survive
-		// quadlet's word-splitting.
-		rule!: string & !~"'"
-		// Router entrypoints (e.g. ["websecure"]); omitted: traefik default.
-		entrypoints?: [...string]
-		// Appended verbatim: middlewares, TLS options, ...
-		extraLabels?: [...c.#KeyValue]
+		// Shared labels, emitted once per placement.
+		_shared: [
+			"traefik.enable=true",
+			"traefik.docker.network=\(units.networks[networkName].#networkName)",
+		]
 
-		#label: list.Concat([
-			[
-				"traefik.enable=true",
-				"'traefik.http.routers.\(router).rule=\(rule)'",
-				"traefik.http.services.\(router).loadbalancer.server.port=\(port)",
-				"traefik.docker.network=\(units.networks[networkName].#networkName)",
-			],
-			[if entrypoints != _|_ {
-				"traefik.http.routers.\(router).entrypoints=" + strings.Join(entrypoints, ",")
-			}],
-			[if extraLabels != _|_ for l in extraLabels {l}],
-		])
+		// routes: one router/service per key; all share the pair network.
+		routes: [Route=string]: {
+			// router keys the traefik router and service; unique per quadlet.
+			router: string | *"\(name)-\(Route)"
+
+			// Backend port the container listens on.
+			port!: int & >0 & <65536
+			// Router rule, e.g. "Host(`grafana.example.lan`)". No single
+			// quotes: the emitted label is single-quoted so rules with
+			// spaces survive quadlet's word-splitting.
+			rule!: string & !~"'"
+			// Router entrypoints (e.g. ["websecure"]); omitted: traefik default.
+			entrypoints?: [...string]
+			// Appended verbatim: middlewares, TLS options, ...
+			extraLabels?: [...c.#KeyValue]
+
+			_core: list.Concat([
+				[
+					"'traefik.http.routers.\(router).rule=\(rule)'",
+					"traefik.http.services.\(router).loadbalancer.server.port=\(port)",
+				],
+				[if entrypoints != _|_ {
+					"traefik.http.routers.\(router).entrypoints=" + strings.Join(entrypoints, ",")
+				}],
+				[if extraLabels != _|_ for l in extraLabels {l}],
+			])
+
+			// #label is this route standalone (per-container placement).
+			#label: list.Concat([_shared, _core])
+		}
+
+		// #label aggregates every route for the single-container case.
+		#label: list.Concat([_shared, for _, r in routes {r._core}])
 	}
 
 	// Open at the top, like #ReverseProxySpec: #Quadlet enforces closedness.

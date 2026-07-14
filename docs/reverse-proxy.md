@@ -16,15 +16,14 @@ Unify the spec at the quadlet level so it reads the quadlet's `name`:
 ```cue
 grafana: creidhne.#Quadlet & ce.#TraefikProxySpec & {
     name: "grafana"
-    #exposes: {
-        port: 3000
-        rule: "Host(`grafana.example.lan`)"
-        entrypoints: ["websecure"]
+    #exposes: routes: {
+        web: {port: 3000, rule: "Host(`grafana.example.lan`)", entrypoints: ["websecure"]}
+        api: {port: 3001, rule: "Host(`api.grafana.example.lan`)"}
     }
     units: #container: Container: {
         Image:   "docker.io/grafana/grafana:11"
         Network: [units.networks.proxy.#self]
-        Label:   [#exposes.#label] // nested label block, splices flat
+        Label:   [#exposes.#label] // every route; splices flat
     }
 }
 
@@ -52,10 +51,12 @@ Label=creidhne.pair=grafana
 Image=docker.io/grafana/grafana:11
 Network=grafana-proxy.network
 Label=traefik.enable=true
-Label='traefik.http.routers.grafana.rule=Host(`grafana.example.lan`)'
-Label=traefik.http.services.grafana.loadbalancer.server.port=3000
 Label=traefik.docker.network=systemd-grafana-proxy
-Label=traefik.http.routers.grafana.entrypoints=websecure
+Label='traefik.http.routers.grafana-web.rule=Host(`grafana.example.lan`)'
+Label=traefik.http.services.grafana-web.loadbalancer.server.port=3000
+Label=traefik.http.routers.grafana-web.entrypoints=websecure
+Label='traefik.http.routers.grafana-api.rule=Host(`api.grafana.example.lan`)'
+Label=traefik.http.services.grafana-api.loadbalancer.server.port=3001
 
 # traefik.container
 [Container]
@@ -90,14 +91,30 @@ service quadlet); the proxy side is a single `Network:` entry.
 
 | Field | Type | Default | Purpose |
 | --- | --- | --- | --- |
+| `routes` | map, at least one entry | required | One traefik router/service per key; all share the pair network |
+| `networkName` | `string` | `"proxy"` | Handle: the `units.networks` key; file is `<quadlet>-<networkName>.network` |
+| `pair` | `string` | quadlet `name` | Marker label value |
+| `extraOptions?` | `[...#KeyValue]` | none | Netavark options appended after the fixed isolate |
+
+### Route fields (`#exposes.routes.<key>`)
+
+| Field | Type | Default | Purpose |
+| --- | --- | --- | --- |
 | `port!` | `int` (1-65535) | required | Backend port the container listens on |
 | `rule!` | `string`, no `'` | required | Traefik router rule |
 | `entrypoints?` | `[...string]` | traefik default | Router entrypoints, joined with `,` |
 | `extraLabels?` | `[...#KeyValue]` | none | Appended verbatim (middlewares, TLS, ...) |
-| `router` | `string` | quadlet `name` | Keys the traefik router and service |
-| `networkName` | `string` | `"proxy"` | Handle: the `units.networks` key; file is `<quadlet>-<networkName>.network` |
-| `pair` | `string` | quadlet `name` | Marker label value |
-| `extraOptions?` | `[...#KeyValue]` | none | Netavark options appended after the fixed isolate |
+| `router` | `string` | `"<name>-<key>"` | Keys the traefik router and service |
+
+Place `#exposes.#label` for every route on one container, or a single
+route's `#exposes.routes.<key>.#label` per container when a quadlet's
+containers split the routes. A `#checks` entry enforces at least one route
+and every route's `port`/`rule`, so an unfilled mixin fails the build:
+
+```
+Error: quadlet books: check "traefik-proxy/exposes" failed: mixing
+#TraefikProxySpec requires at least one #exposes.routes entry
+```
 
 The spec places the pair network itself at the `networkName` handle
 (default `units.networks.proxy`, file `<quadlet>-proxy.network`);
