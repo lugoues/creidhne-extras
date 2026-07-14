@@ -35,8 +35,15 @@ Note the field is `value:` (from `#JSONLabel`), not `#value:` as in the
 | `enable` | `bool` | required |
 | `group` | `string` | required; backup group the container joins |
 | `volumes` | `[...string]` | runtime volume names; pass the canonical `#volumeName` handles so they can never drift |
-| `config` | `{...}` | open struct, passed through verbatim; marshals to `{}` when unset |
+| `config` | `#BorgmaticConfig` | borgmatic configuration fragment, validated against borgmatic's own schema; marshals to `{}` when unset |
 | `db` | `[...]` | open list, passed through verbatim; marshals to `[]` when unset |
+
+`#BorgmaticConfig` is imported from borgmatic's published config schema
+(`borgmatic-config.gen.cue`, regenerated with `mise run
+gen:borgmatic-schema`). The struct is closed, so a typo'd option
+(`kep_daily`) dies at `crei validate` instead of inside the manager. Because
+the label carries a *fragment*, top-level fields are all optional; nested
+requirements stay enforced (a `repositories` entry still needs its `path`).
 
 ## Why `#JSONLabel` and not `#StringLabelList`
 

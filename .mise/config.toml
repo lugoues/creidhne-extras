@@ -1,0 +1,27 @@
+# Developer tooling for creidhne-extras. Only needed to regenerate schemas;
+# consumers vendor the checked-in .cue files and need none of this.
+
+[tools]
+cue = "0.16.0"
+
+[tasks."gen:borgmatic-schema"]
+description = "Fetch borgmatic's config schema and regenerate #BorgmaticConfig"
+run = """
+set -euo pipefail
+
+url="https://projects.torsion.org/StefanSchoof/borgmatic/raw/branch/main/borgmatic/config/schema.yaml"
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+
+curl -fsSL "$url" -o "$tmp"
+
+cue import jsonschema+yaml: "$tmp" -p creidhne_extras -l '#BorgmaticConfig:' -o borgmatic-config.gen.cue -f
+
+# The label carries a config *fragment*, so top-level required fields
+# (repositories) relax to optional; nested requireds (a repository entry's
+# path) stay required. Top-level fields sit at exactly two tabs.
+sed -E -i 's/^(\\t\\t[a-zA-Z0-9_]+)!:/\\1?:/' borgmatic-config.gen.cue
+
+cue fmt borgmatic-config.gen.cue
+"""
