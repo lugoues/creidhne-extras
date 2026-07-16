@@ -176,7 +176,13 @@ import (
 			rule!: string & !~"'"
 			// Router entrypoints (e.g. ["websecure"]); omitted: traefik default.
 			entrypoints?: [...string]
-			// Appended verbatim: middlewares, TLS options, ...
+			// Router priority; omitted: traefik's rule-length default.
+			priority?: int & >0
+			// Middleware names applied to this router, in order. The
+			// definitions themselves are user-named: declare them in
+			// extraLabels.
+			middlewares?: [...string]
+			// Appended verbatim: middleware definitions, TLS options, ...
 			extraLabels?: [...c.#KeyValue]
 
 			_core: list.Concat([
@@ -189,6 +195,12 @@ import (
 				}],
 				[if entrypoints != _|_ {
 					"traefik.http.routers.\(router).entrypoints=" + strings.Join(entrypoints, ",")
+				}],
+				[if priority != _|_ {
+					"traefik.http.routers.\(router).priority=\(priority)"
+				}],
+				[if middlewares != _|_ {
+					"traefik.http.routers.\(router).middlewares=" + strings.Join(middlewares, ",")
 				}],
 				[if extraLabels != _|_ for l in extraLabels {l}],
 			])

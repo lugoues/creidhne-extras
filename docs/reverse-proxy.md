@@ -111,6 +111,8 @@ service quadlet); the proxy side is a single `Network:` entry.
 | `port` | `int` (1-65535) | required for service-owning routes | Backend port the container listens on |
 | `rule!` | `string`, no `'` | required | Traefik router rule |
 | `entrypoints?` | `[...string]` | traefik default | Router entrypoints, joined with `,` |
+| `priority?` | `int` | traefik default | Router priority |
+| `middlewares?` | `[...string]` | none | Middleware names for this router; define them in `extraLabels` |
 | `extraLabels?` | `[...#KeyValue]` | none | Appended verbatim (middleware definitions, TLS, ...) |
 | `router` | `string` | `"<name>-<key>"` | Keys the traefik router |
 | `service` | `string` | own router name | Service the router binds to (always explicit: traefik cannot auto-link with several services on one container) |
@@ -123,9 +125,11 @@ handle and needs no `port` (2 routers, 1 service):
 #exposes: routes: {
     pod: {port: 8080, rule: "Host(`minus.lan`)"}
     "pod-root": {
-        rule:    "Host(`minus.lan`) && Path(`/`)"
-        service: routes.pod.#serviceName
-        extraLabels: ["traefik.http.routers.minus-pod-root.priority=100"]
+        rule:        "Host(`minus.lan`) && Path(`/`)"
+        service:     routes.pod.#serviceName
+        priority:    100
+        middlewares: ["to-ui"]
+        extraLabels: ["traefik.http.middlewares.to-ui.redirectregex.regex=..."]
     }
 }
 ```
