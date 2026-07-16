@@ -55,15 +55,23 @@ import (
 		extraOptions?: [...c.#KeyValue]
 
 		// _network is the pair network's unit body, placed by the spec at
-		// units.networks.proxy. Internal/DisableDNS/isolate are the hardened
-		// guarantees and cannot be overridden; everything else stays open for
+		// units.networks.proxy. Internal/isolate are the hardened guarantees
+		// and cannot be overridden; everything else stays open for
 		// placement-site decoration (units: networks: proxy: {Network: ...}).
+		//
+		// No DisableDNS, reluctantly: it exists for isolation, not hygiene.
+		// aardvark forwards non-container queries to the host's resolvers,
+		// so DNS is an egress side-channel through an otherwise Internal
+		// network, and DisableDNS is the only per-network off-switch. But
+		// combined with Internal, podman < 6 omits the network's gateway
+		// address and traefik's docker client fails on Gateway "<nil>",
+		// never configuring the backend (podman#28705, fixed by #28711).
+		// The side-channel stays open until podman 6 is the floor.
 		_network: {
 			Network: {
-				// Container-to-container only: no DNS, no gateway, no NAT, no
+				// Container-to-container only: no gateway routing, no NAT, no
 				// cross-network traffic (strict needs netavark >= 1.7).
-				DisableDNS: true
-				Internal:   true
+				Internal: true
 				Options: list.Concat([
 					["isolate=strict"],
 					[if extraOptions != _|_ for o in extraOptions {o}],

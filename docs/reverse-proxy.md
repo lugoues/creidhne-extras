@@ -43,7 +43,6 @@ Renders:
 [Network]
 Options=isolate=strict
 Internal=true
-DisableDNS=true
 Label=creidhne.pair=grafana
 
 # grafana.container
@@ -73,12 +72,21 @@ Network=grafana-proxy.network
    picks an arbitrary IP).
 2. The rule label is single-quoted, so rules with spaces
    (`Host(...) && PathPrefix(...)`) survive quadlet's word-splitting.
-3. Hardened guarantees, not defaults: `Internal=true` (no gateway or NAT,
-   the pair network can never become an egress path), `isolate=strict` (no
-   cross-network traffic at all; netavark before 2.0 allowed it by default),
-   and `DisableDNS=true` (two peers that dial each other by IP; DNS is dead
-   weight). None of these can be overridden. Strict isolation requires
-   netavark >= 1.7 (podman 4.7); netavark >= 2.0 defaults to it anyway.
+3. Hardened guarantees, not defaults: `Internal=true` (no gateway routing or
+   NAT, the pair network can never become an egress path) and
+   `isolate=strict` (no cross-network traffic at all; netavark before 2.0
+   allowed it by default). Neither can be overridden. Strict isolation
+   requires netavark >= 1.7 (podman 4.7); netavark >= 2.0 defaults to it.
+   Reluctantly absent: `DisableDNS`. It belongs here as isolation, not
+   hygiene: aardvark-dns forwards non-container queries to the host's
+   resolvers, making DNS an egress side-channel through an otherwise
+   Internal network, and `DisableDNS` is the only per-network off-switch.
+   But combined with `Internal`, podman < 6 omits the network's gateway
+   *address*, and traefik's docker client fails parsing `Gateway: <nil>`,
+   never configuring the backend at all
+   ([podman#28705](https://github.com/podman-container-tools/podman/issues/28705),
+   fixed for podman 6). Until podman 6 is the floor, the DNS side-channel
+   is a known, accepted gap in the pair-network isolation.
 4. The `creidhne.pair=<name>` marker declares the isolation contract:
    exactly two containers (service + proxy) should ever attach. A future
    `crei lint` rule can count graph attachments against it; the marker is
@@ -128,8 +136,8 @@ units: networks: proxy: Network: Subnet: ["10.89.44.0/24"]
 units: networks: proxy: Network: NetworkName: "gf-proxy"
 ```
 
-`Internal`, `DisableDNS`, and the isolate option are fixed: overriding them
-is a conflict error, so a placed pair network always carries the guarantees.
+`Internal` and the isolate option are fixed: overriding them is a conflict
+error, so a placed pair network always carries the guarantees.
 
 Forgetting `#exposes` entirely still places the pair network (it renders
 from defaults), so the mistake surfaces in `crei plan` instead of silently
