@@ -35,7 +35,7 @@ traefik: creidhne.#Quadlet & {
     }
 }
 ```
-t
+
 Renders:
 
 ```ini
@@ -108,11 +108,27 @@ service quadlet); the proxy side is a single `Network:` entry.
 
 | Field | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `port!` | `int` (1-65535) | required | Backend port the container listens on |
+| `port` | `int` (1-65535) | required for service-owning routes | Backend port the container listens on |
 | `rule!` | `string`, no `'` | required | Traefik router rule |
 | `entrypoints?` | `[...string]` | traefik default | Router entrypoints, joined with `,` |
-| `extraLabels?` | `[...#KeyValue]` | none | Appended verbatim (middlewares, TLS, ...) |
-| `router` | `string` | `"<name>-<key>"` | Keys the traefik router and service |
+| `extraLabels?` | `[...#KeyValue]` | none | Appended verbatim (middleware definitions, TLS, ...) |
+| `router` | `string` | `"<name>-<key>"` | Keys the traefik router |
+| `service` | `string` | own router name | Service the router binds to (always explicit: traefik cannot auto-link with several services on one container) |
+| `#serviceName` | computed | resolved `service` | Canonical handle other routes share a service by |
+
+A route that shares another route's service references its canonical
+handle and needs no `port` (2 routers, 1 service):
+
+```cue
+#exposes: routes: {
+    pod: {port: 8080, rule: "Host(`minus.lan`)"}
+    "pod-root": {
+        rule:    "Host(`minus.lan`) && Path(`/`)"
+        service: routes.pod.#serviceName
+        extraLabels: ["traefik.http.routers.minus-pod-root.priority=100"]
+    }
+}
+```
 
 Place `#exposes.#label` for every route on one container, or a single
 route's `#exposes.routes.<key>.#label` per container when a quadlet's

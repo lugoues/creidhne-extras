@@ -124,7 +124,7 @@ import (
 	#checks: "traefik-proxy/exposes": {
 		assert: len(#exposes.routes) > 0
 		require: list.Concat([
-			[for _, r in #exposes.routes {r.port}],
+			[for _, r in #exposes.routes if r._own {r.port}],
 			[for _, r in #exposes.routes {r.rule}],
 		])
 		why: "mixing #TraefikProxySpec requires at least one #exposes.routes entry"
@@ -143,13 +143,33 @@ import (
 			"traefik.docker.network=\(units.networks[networkName].#networkName)",
 		]
 
-		// routes: one router/service per key; all share the pair network.
+		// routes: one router per key; all share the pair network. A route
+		// owns a same-named service by default; point service at another
+		// route's router to share one (2 routers, 1 service).
 		routes: [Route=string]: {
-			// router keys the traefik router and service; unique per quadlet.
+			// router keys the traefik router; unique per quadlet.
 			router: string | *"\(name)-\(Route)"
+			// service the router binds to. Explicit always: traefik only
+			// auto-links when the container defines exactly one service, so
+			// multi-route containers die with "too many services". Share
+			// another route's service (2 routers, 1 service) via its
+			// canonical handle: service: routes.web.#serviceName.
+			service: string | *router
+			// #serviceName is the resolved service name, the reference
+			// handle other routes share by. The interpolation is
+			// load-bearing: it collapses the input's star-default into a
+			// concrete string; referencing `service` or `router` directly
+			// would unify two star-defaults, which CUE cannot resolve.
+			#serviceName: "\(service)"
+			_own:         service == router
 
-			// Backend port the container listens on.
-			port!: int & >0 & <65536
+			// Backend port the container listens on; required exactly when
+			// this route owns its service.
+			port?: int & >0 & <65536
+			if _own {
+				port!: int & >0 & <65536
+			}
+
 			// Router rule, e.g. "Host(`grafana.example.lan`)". No single
 			// quotes: the emitted label is single-quoted so rules with
 			// spaces survive quadlet's word-splitting.
@@ -162,8 +182,11 @@ import (
 			_core: list.Concat([
 				[
 					"'traefik.http.routers.\(router).rule=\(rule)'",
-					"traefik.http.services.\(router).loadbalancer.server.port=\(port)",
+					"traefik.http.routers.\(router).service=\(#serviceName)",
 				],
+				[if _own {
+					"traefik.http.services.\(#serviceName).loadbalancer.server.port=\(port)"
+				}],
 				[if entrypoints != _|_ {
 					"traefik.http.routers.\(router).entrypoints=" + strings.Join(entrypoints, ",")
 				}],
