@@ -27,6 +27,7 @@ import ce "github.com/lugoues/creidhne-extras:creidhne_extras"
 | --- | --- | --- |
 | [`#ReverseProxySpec`](docs/reverse-proxy.md) | `reverse-proxy.cue` | Per-service reverse-proxy pair network: isolation, marker label, hardened defaults |
 | [`#TraefikProxySpec`](docs/reverse-proxy.md) | `reverse-proxy.cue` | Traefik label DSL layered on the pair-network pattern |
+| [`#StaticNetworkMixin`](docs/static-network.md) | `static-network.cue` | "DNS in CUE": DNS-less network + injected address book (IPs, /etc/hosts, ContainerName defaults) |
 | [`#DockTailSpec`](docs/docktail.md) | `docktail.cue` | Typed `docktail.*` labels for the DockTail Tailscale sidecar |
 | [`#BorgManagerSpec`](docs/borg-manager.md) | `borg-manager.cue` | Typed JSON payload for the borgmatic-manager label |
 | [`#FlattenStruct`, `#StringLabelList`](docs/utilities.md) | `utilities.cue` | Struct-to-dot-path label rendering, the base for prefix-keyed label DSLs |
