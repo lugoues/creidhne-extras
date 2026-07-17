@@ -78,22 +78,26 @@ stack: creidhne.#Quadlet & ce.#StaticNetworkMixin & {
 | --- | --- | --- |
 | `ip?` | `string` | Pin this member's address instead of auto-assignment |
 
-### Per-container knobs (definition fields on the member container)
+### Per-container knobs (definition fields inside `Container`)
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `#extraNetworks?` | list | Additional `Network=` attachments (e.g. a pair network's `#self`) |
-| `#extraHosts?` | `[...string]` | Additional `AddHost=` entries beyond the book |
+| `#extraNetworks?` | `[...(#NetworkMode \| #NetworkSelf \| #ContainerSelf)]` | Additional `Network=` attachments (e.g. a pair network's `#self`) |
+| `#extraHosts?` | `[...#HostMapping]` | Additional `AddHost=` entries beyond the book |
 
-These sit on the container itself, next to what they affect, and work in
+These sit inside `Container`, next to the lists they extend, and work in
 both modes:
 
 ```cue
-units: containers: redis: {
+units: containers: redis: Container: {
+    Image: "..."
     #extraHosts: ["legacy-db:10.30.0.99"]
-    Container: {Image: "..."}
 }
 ```
+
+Putting them on the unit instead of inside `Container` fails the build
+(check `static-network/knob-placement`); anywhere else, closedness
+rejects them as usual.
 
 ## What the mixin injects
 
@@ -121,8 +125,8 @@ The mixin owns members' `Network` and `AddHost` lists: CUE lists unify
 positionally and never merge, so a user-written list would conflict with
 the injected one. `#extraNetworks`/`#extraHosts` are the mergeable
 channel, and they are definition fields because that is the one
-container-site channel a closed unit admits (closedness exempts
-definitions; export drops them).
+channel a closed unit admits (closedness exempts definitions; export
+drops them).
 
 ## Rules and traps
 

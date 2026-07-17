@@ -99,6 +99,14 @@ import (
 	// The address book every member receives: effective runtime names.
 	_book: [for k, _ in _members {"\(units.containers[k].Container.ContainerName):\(_ipOf[k])"}]
 
+	// Misplaced knobs are otherwise silent (closedness cannot reject
+	// definition fields): fail the build when they sit on the unit
+	// instead of inside Container.
+	#checks: "static-network/knob-placement": {
+		assert: len([for k, _ in _members if units.containers[k].#extraNetworks != _|_ || units.containers[k].#extraHosts != _|_ {k}]) == 0
+		why: "#extraNetworks/#extraHosts go inside Container (next to Network/AddHost), not on the unit"
+	}
+
 	units: {
 		networks: {
 			(#static.networkName): {
@@ -121,24 +129,27 @@ import (
 			// units.containers itself (omitted members).
 			[Key=string]: {
 				if _members[Key] != _|_ {
-					// The mixin owns Network and AddHost (injected lists cannot
-					// merge with user lists); extra attachments and hosts go
-					// through these, the one container-site channel closedness
-					// admits (definition fields, dropped on export).
-					#extraNetworks?: [...]
-					#extraHosts?: [...string]
 					Container: {
+						// The mixin owns Network and AddHost (injected lists
+						// cannot merge with user lists); extras go through
+						// these, declared beside the lists they extend
+						// (definition fields: closedness-exempt, export-dropped).
+						#extraNetworks?: [...(c.#NetworkMode | c.#NetworkSelf | c.#ContainerSelf)]
+						#extraHosts?: [...c.#HostMapping]
 						ContainerName: *_defName[Key] | string
 						// Nested lists, spliced by crei's flattening: an eager
 						// list.Concat would force _book while these containers
 						// are being constructed, a structural cycle.
 						Network: [
 							units.networks[#static.networkName].#self & {ip: _ipOf[Key]},
-							if #extraNetworks != _|_ {#extraNetworks},
+							if units.containers[Key].Container.#extraNetworks != _|_ {units.containers[Key].Container.#extraNetworks},
 						]
+						// Knob guards use absolute paths: a lexical reference
+						// into this literal fails to resolve when the unit is
+						// embedded into the manifest (data: u).
 						AddHost: [
 							_book,
-							if #extraHosts != _|_ {#extraHosts},
+							if units.containers[Key].Container.#extraHosts != _|_ {units.containers[Key].Container.#extraHosts},
 						]
 						...
 					}
