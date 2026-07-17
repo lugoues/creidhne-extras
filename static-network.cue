@@ -102,9 +102,13 @@ import (
 	// Misplaced knobs are otherwise silent (closedness cannot reject
 	// definition fields): fail the build when they sit on the unit
 	// instead of inside Container.
-	#checks: "static-network/knob-placement": {
-		assert: len([for k, _ in _members if units.containers[k].#extraNetworks != _|_ || units.containers[k].#extraHosts != _|_ {k}]) == 0
-		why: "#extraNetworks/#extraHosts go inside Container (next to Network/AddHost), not on the unit"
+	// Open literal: see reverse-proxy.cue, closed registrations veto each other.
+	#checks: {
+		"static-network/knob-placement": {
+			assert: len([for k, _ in _members if units.containers[k].#extraNetworks != _|_ || units.containers[k].#extraHosts != _|_ {k}]) == 0
+			why: "#extraNetworks/#extraHosts go inside Container (next to Network/AddHost), not on the unit"
+		}
+		...
 	}
 
 	units: {

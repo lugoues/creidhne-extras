@@ -121,13 +121,19 @@ import (
 	// Mixing this in declares intent to expose: fail the build when no
 	// route was filled instead of rendering a bare pair network, and force
 	// every route's required fields even before its label is placed.
-	#checks: "traefik-proxy/exposes": {
-		assert: len(#exposes.routes) > 0
-		require: list.Concat([
-			[for _, r in #exposes.routes if r._own {r.port}],
-			[for _, r in #exposes.routes {r.rule}],
-		])
-		why: "mixing #TraefikProxyMixin requires at least one #exposes.routes entry"
+	// Registered through an open literal: a mixin's #checks registration is
+	// definition-nested and therefore closed, so two mixins' single-key
+	// registrations on one quadlet would veto each other without the `...`.
+	#checks: {
+		"traefik-proxy/exposes": {
+			assert: len(#exposes.routes) > 0
+			require: list.Concat([
+				[for _, r in #exposes.routes if r._own {r.port}],
+				[for _, r in #exposes.routes {r.rule}],
+			])
+			why: "mixing #TraefikProxyMixin requires at least one #exposes.routes entry"
+		}
+		...
 	}
 
 	#exposes: {
