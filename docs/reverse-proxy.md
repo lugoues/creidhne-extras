@@ -1,6 +1,6 @@
 # Reverse-proxy pair networks
 
-`#ReverseProxySpec` and `#TraefikProxySpec` implement the per-service proxy
+`#ReverseProxyMixin` and `#TraefikProxyMixin` implement the per-service proxy
 pattern: every exposed service gets a dedicated "pair" network shared only
 with the reverse proxy. Podman networks have no peer isolation (every peer
 on a network sees every peer), so isolation comes from one network per
@@ -11,10 +11,10 @@ a label list; every placement stays explicit and visible in your quadlet.
 
 ## Usage
 
-Unify the spec at the quadlet level so it reads the quadlet's `name`:
+Unify the mixin at the quadlet level so it reads the quadlet's `name`:
 
 ```cue
-grafana: creidhne.#Quadlet & ce.#TraefikProxySpec & {
+grafana: creidhne.#Quadlet & ce.#TraefikProxyMixin & {
     name: "grafana"
     #exposes: routes: {
         web: {port: 3000, rule: "Host(`grafana.example.lan`)", entrypoints: ["websecure"]}
@@ -141,10 +141,10 @@ and every route's `port`/`rule`, so an unfilled mixin fails the build:
 
 ```
 Error: quadlet books: check "traefik-proxy/exposes" failed: mixing
-#TraefikProxySpec requires at least one #exposes.routes entry
+#TraefikProxyMixin requires at least one #exposes.routes entry
 ```
 
-The spec places the pair network itself at the `networkName` handle
+The mixin places the pair network itself at the `networkName` handle
 (default `units.networks.proxy`, file `<quadlet>-proxy.network`);
 `#exposes.#network` aliases the placed unit, so `#exposes.#network.#self`
 resolves to the canonical handles. The unit body is open, so decorate it in
@@ -165,10 +165,10 @@ doing nothing; the traefik labels stay enforced at their `Label:` placement.
 
 ## Layering
 
-`#ReverseProxySpec` is the generic pattern (pair network, marker, defaults,
-`networkName` ownership); `#TraefikProxySpec` layers the label DSL on top.
+`#ReverseProxyMixin` is the generic pattern (pair network, marker, defaults,
+`networkName` ownership); `#TraefikProxyMixin` layers the label DSL on top.
 A different proxy (caddy, nginx) would be a sibling layer over the same
-generic spec: fix `networkName`, unify `#exposes` with `creidhne.#Rendered`,
+generic mixin: fix `networkName`, unify `#exposes` with `creidhne.#Rendered`,
 and compute `#rendered` from your proxy's discovery convention.
 
 Typos in `#exposes` are rejected (the layer's config struct is closed); the
