@@ -55,9 +55,9 @@ import (
 		extraOptions?: [...c.#KeyValue]
 
 		// _network is the pair network's unit body, placed by the mixin at
-		// units.networks.proxy. Internal/isolate are the hardened guarantees
-		// and cannot be overridden; everything else stays open for
-		// placement-site decoration (units: networks: proxy: {Network: ...}).
+		// units.networks.proxy: #InternalNetworkSpec guarantees plus the
+		// pair marker; everything else stays open for placement-site
+		// decoration (units: networks: proxy: {Network: ...}).
 		//
 		// No DisableDNS, reluctantly: it exists for isolation, not hygiene.
 		// aardvark forwards non-container queries to the host's resolvers,
@@ -67,15 +67,9 @@ import (
 		// address and traefik's docker client fails on Gateway "<nil>",
 		// never configuring the backend (podman#28705, fixed by #28711).
 		// The side-channel stays open until podman 6 is the floor.
-		_network: {
+		_network: #InternalNetworkSpec & {
+			if extraOptions != _|_ {#extraOptions: extraOptions}
 			Network: {
-				// Container-to-container only: no gateway routing, no NAT, no
-				// cross-network traffic (strict needs netavark >= 1.7).
-				Internal: true
-				Options: list.Concat([
-					["isolate=strict"],
-					[if extraOptions != _|_ for o in extraOptions {o}],
-				])
 				Label: ["creidhne.pair=\(pair)"]
 				...
 			}

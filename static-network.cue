@@ -113,12 +113,11 @@ import (
 
 	units: {
 		networks: {
-			(#static.networkName): {
+			// #InternalNetworkSpec guarantees, plus DisableDNS: this mixin's
+			// premise, the hosts book replaces aardvark entirely.
+			(#static.networkName): #InternalNetworkSpec & {
 				Network: {
-					Internal:            true
-					DisableDNS:          true
-					NetworkDeleteOnStop: true
-					Options: ["isolate=strict"]
+					DisableDNS: true
 					Subnet: [#static.subnet]
 					...
 				}

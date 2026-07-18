@@ -101,8 +101,9 @@ rejects them as usual.
 
 ## What the mixin injects
 
-For the placed network (at the `networkName` handle): `Internal`,
-`isolate=strict`, `NetworkDeleteOnStop`, `Subnet`, and `DisableDNS`. The
+For the placed network (at the `networkName` handle): the
+[`#InternalNetworkSpec`](internal-network.md) guarantees (`Internal`,
+`isolate=strict`, `NetworkDeleteOnStop`) plus `Subnet` and `DisableDNS`. The
 last is this helper's premise, not an option. (The podman < 6
 `Internal+DisableDNS` gateway-address bug, podman#28705, only bites
 docker-API inspectors like traefik, which have no business on this

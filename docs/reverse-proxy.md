@@ -72,11 +72,13 @@ Network=grafana-proxy.network
    picks an arbitrary IP).
 2. The rule label is single-quoted, so rules with spaces
    (`Host(...) && PathPrefix(...)`) survive quadlet's word-splitting.
-3. Hardened guarantees, not defaults: `Internal=true` (no gateway routing or
-   NAT, the pair network can never become an egress path) and
-   `isolate=strict` (no cross-network traffic at all; netavark before 2.0
-   allowed it by default). Neither can be overridden. Strict isolation
-   requires netavark >= 1.7 (podman 4.7); netavark >= 2.0 defaults to it.
+3. Hardened guarantees, not defaults, via
+   [`#InternalNetworkSpec`](internal-network.md): `Internal=true` (no
+   gateway routing or NAT, the pair network can never become an egress
+   path), `isolate=strict` (no cross-network traffic at all; requires
+   netavark >= 1.7, and netavark >= 2.0 defaults to it), and
+   `NetworkDeleteOnStop` (cleaned up when the network unit stops). None
+   can be overridden.
    Reluctantly absent: `DisableDNS`. It belongs here as isolation, not
    hygiene: aardvark-dns forwards non-container queries to the host's
    resolvers, making DNS an egress side-channel through an otherwise
