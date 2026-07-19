@@ -112,6 +112,15 @@ import (
 	// unification do not share identifiers).
 	units: _
 
+	// _labelPools: every Label list in the quadlet (containers and pods,
+	// primary and additional), nested splices intact; the checks scan them.
+	_labelPools: list.Concat([
+		[for _, u in units.containers if u.Container.Label != _|_ {u.Container.Label}],
+		[for _, u in units.pods if u.Pod.Label != _|_ {u.Pod.Label}],
+		[if units.#container != _|_ if units.#container.Container.Label != _|_ {units.#container.Container.Label}],
+		[if units.#pod != _|_ if units.#pod.Pod.Label != _|_ {units.#pod.Pod.Label}],
+	])
+
 	// Mixing this in declares intent to expose: fail the build when no
 	// route was filled instead of rendering a bare pair network, and force
 	// every route's required fields even before its label is placed.
@@ -126,6 +135,20 @@ import (
 				[for _, r in #exposes.routes {r.rule}],
 			])
 			why: "mixing #TraefikProxyMixin requires at least one #exposes.routes entry"
+		}
+		// The routes only take effect where their labels land: require the
+		// shared discovery label on at least one container or pod. Lazy
+		// two-level scan (Label nests exactly one level per the schema):
+		// list.FlattenN freezes here, eagerly evaluating lists that
+		// reference this same instance (#exposes.#label) into elements that
+		// never resolve. The unification guards double as type filters, so
+		// #Rendered structs in the pools never hit a mixed-type comparison.
+		"traefik-proxy/label-placed": {
+			assert: len(list.Concat([
+				[for pool in _labelPools for e in pool if (e & "traefik.enable=true") != _|_ {e}],
+				[for pool in _labelPools for e in pool if (e & [...]) != _|_ for x in e if (x & "traefik.enable=true") != _|_ {x}],
+			])) > 0
+			why: "splice #exposes.#label (or a route's #label) into a container or pod Label list; without it traefik never discovers the service"
 		}
 		...
 	}

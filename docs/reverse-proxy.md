@@ -138,8 +138,11 @@ handle and needs no `port` (2 routers, 1 service):
 
 Place `#exposes.#label` for every route on one container, or a single
 route's `#exposes.routes.<key>.#label` per container when a quadlet's
-containers split the routes. A `#checks` entry enforces at least one route
-and every route's `port`/`rule`, so an unfilled mixin fails the build:
+containers split the routes. `#checks` entries enforce at least one route,
+every route's `port`/`rule`, and that the discovery label actually landed
+on some container or pod (`traefik-proxy/label-placed`, catching routes
+defined but `#label` never spliced), so an unfilled or unwired mixin fails
+the build:
 
 ```
 Error: quadlet books: check "traefik-proxy/exposes" failed: mixing
