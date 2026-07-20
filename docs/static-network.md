@@ -159,5 +159,7 @@ drops them).
   default injected the field is always concretely present, the book reads
   it safely, and user overrides win by ordinary default semantics.
 - Auto-assigned offsets are bounds-checked against the subnet's host
-  range; overflowing a small subnet fails the build. Pinned `ip:` values
-  are taken verbatim (they bypass the bounds check).
+  range (check `static-network/subnet-fits`); overflowing a small subnet
+  fails the build. Pinned `ip:` values are taken verbatim (they bypass
+  the bounds check). Pins pair well with [`#Subnet`](subnet.md)'s
+  `byName` map when the subnet layout is planned centrally.

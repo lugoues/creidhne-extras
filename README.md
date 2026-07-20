@@ -4,7 +4,8 @@ Opinionated helpers for [creidhne](https://github.com/lugoues/creidhne)
 quadlet definitions. The placement rule for this module: **a helper lives
 here iff it needs no changes to the core schema**. Everything in this repo
 rides stock creidhne mechanisms (`#Rendered` label helpers, list flattening,
-star-defaulted schema fields).
+star-defaulted schema fields). Requires crei >= v2.6.0 (the cue 0.17
+evaluator: net.ParseCIDR/AddIP).
 
 ## Install
 
@@ -32,6 +33,7 @@ import ce "github.com/lugoues/creidhne-extras:creidhne_extras"
 | [`#BareBuildSpec`](docs/build.md) | `build.cue` | Wrap-an-image build: required `#image` input, bare/microcheck Containerfiles |
 | [`#DockTailSpec`](docs/docktail.md) | `docktail.cue` | Typed `docktail.*` labels for the DockTail Tailscale sidecar |
 | [`#BorgManagerSpec`](docs/borg-manager.md) | `borg-manager.cue` | Typed JSON payload for the borgmatic-manager label |
+| [`#Subnet`](docs/subnet.md) | `subnet.cue` | Subnet planner: gateway, fixed static block with name->IP map, stable dynamic IPRange |
 | [`#FlattenStruct`, `#StringLabelList`](docs/utilities.md) | `utilities.cue` | Struct-to-dot-path label rendering, the base for prefix-keyed label DSLs |
 
 Naming: a `*Mixin` unifies into a `#Quadlet` at the top level and injects

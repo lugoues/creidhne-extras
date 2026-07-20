@@ -4,7 +4,6 @@ import (
 	"list"
 	"math"
 	"net"
-	"strconv"
 	"strings"
 
 	c "github.com/lugoues/creidhne"
@@ -70,20 +69,13 @@ import (
 	_keys: list.SortStrings([for k, _ in _members {k}])
 	_idx: {for i, k in _keys {(k): i}}
 
-	_octets: net.ToIP4(strings.Split(#static.subnet, "/")[0])
-	_prefix: strconv.Atoi(strings.Split(#static.subnet, "/")[1])
-	_baseN:  _octets[0]*16777216 + _octets[1]*65536 + _octets[2]*256 + _octets[3]
-	_ip: {
-		// Bounded to the subnet's host range (capacity minus broadcast).
-		#off: int & >0 & <(math.Exp2(32-_prefix) - 1)
-		_n:   _baseN + #off
-		// Function forms: the infix div/mod operators are removed in cue
-		// v0.17 (deprecated since 2020) and the builtins work in both.
-		out: "\(div(_n, 16777216)).\(mod(div(_n, 65536), 256)).\(mod(div(_n, 256), 256)).\(mod(_n, 256))"
-	}
+	// net.ParseCIDR/AddIP are cue 0.17 builtins (crei >= v2.6.0); they
+	// replaced hand-rolled div/mod octet math.
+	_p:     net.ParseCIDR(#static.subnet)
+	_hosts: math.Exp2(32-_p.prefix_len) - 2
 	_ipOf: {for k, m in _members {
 		if m.ip != _|_ {(k): m.ip}
-		if m.ip == _|_ {(k): (_ip & {#off: #static.start + _idx[k]}).out}
+		if m.ip == _|_ {(k): net.AddIP(_p.prefix_addr, #static.start+_idx[k])}
 	}}
 
 	// Injected ContainerName defaults: quadlet's own runtime default,
@@ -107,6 +99,12 @@ import (
 	// instead of inside Container.
 	// Open literal: see reverse-proxy.cue, closed registrations veto each other.
 	#checks: {
+		// net.AddIP does not bounds-check: without this, an overflowing
+		// member set would silently mint out-of-subnet addresses.
+		"static-network/subnet-fits": {
+			assert: #static.start+len(_keys) <= _hosts
+			why:    "auto-assigned members exceed the subnet's host range; grow the subnet or pin ips"
+		}
 		"static-network/knob-placement": {
 			assert: len([for k, _ in _members if units.containers[k].#extraNetworks != _|_ || units.containers[k].#extraHosts != _|_ {k}]) == 0
 			why: "#extraNetworks/#extraHosts go inside Container (next to Network/AddHost), not on the unit"
