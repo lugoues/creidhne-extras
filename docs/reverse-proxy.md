@@ -120,6 +120,12 @@ service quadlet); the proxy side is a single `Network:` entry.
 | `service` | `string` | own router name | Service the router binds to (always explicit: traefik cannot auto-link with several services on one container) |
 | `#serviceName` | computed | resolved `service` | Canonical handle other routes share a service by |
 
+Under the cue 0.17 evaluator, write unit-derived ports through a
+quadlet-level hop: `port: units.#container.#port` directly inside a route
+trips a spurious cycle in crei's evaluation (upstream non-confluence bug);
+`#port: units.#container.#port` next to `#exposes` with `port: #port`
+resolves identically and works.
+
 A route that shares another route's service references its canonical
 handle and needs no `port` (2 routers, 1 service):
 

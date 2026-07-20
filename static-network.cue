@@ -77,7 +77,9 @@ import (
 		// Bounded to the subnet's host range (capacity minus broadcast).
 		#off: int & >0 & <(math.Exp2(32-_prefix) - 1)
 		_n:   _baseN + #off
-		out:  "\(_n div 16777216).\((_n div 65536) mod 256).\((_n div 256) mod 256).\(_n mod 256)"
+		// Function forms: the infix div/mod operators are removed in cue
+		// v0.17 (deprecated since 2020) and the builtins work in both.
+		out: "\(div(_n, 16777216)).\(mod(div(_n, 65536), 256)).\(mod(div(_n, 256), 256)).\(mod(_n, 256))"
 	}
 	_ipOf: {for k, m in _members {
 		if m.ip != _|_ {(k): m.ip}
@@ -88,10 +90,11 @@ import (
 	// systemd-<stem>, with the stem read back from #ref (its one visible
 	// carrier), so joining the network never changes a runtime name. The
 	// book must not read the computed #containerName (its optional-probing
-	// disjunction freezes evalv3 across mutually-booked members, at any
-	// level); with the default injected the field is always effectively
-	// present, the book reads it safely, and user overrides win by normal
-	// default semantics.
+	// disjunction freezes cue <= 0.16 across mutually-booked members;
+	// fixed in 0.17.1, but extras must evaluate on older crei binaries);
+	// with the default injected the field is always effectively present,
+	// the book reads it safely, and user overrides win by normal default
+	// semantics.
 	_defName: {for k, _ in _members {
 		(k): "systemd-" + strings.TrimSuffix(units.containers[k].#ref, ".container")
 	}}

@@ -2,7 +2,7 @@
 # consumers vendor the checked-in .cue files and need none of this.
 
 [tools]
-cue = "0.16.0"
+cue = "0.17.1"
 
 [tasks."gen:borgmatic-schema"]
 description = "Fetch borgmatic's config schema and regenerate #BorgmaticConfig"
