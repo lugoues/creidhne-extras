@@ -58,12 +58,37 @@ import (
 		members?: [Key=string]: {
 			ip?: string
 		}
+
+		// exclude keeps containers out of the all-mode sweep without
+		// forcing explicit members. The list is the human channel; mixins
+		// placing infrastructure containers inject through the #exclude
+		// map instead (maps merge across conjuncts, lists cannot) via an
+		// open literal, the #checks-registration convention:
+		//
+		//	#static: {#exclude: {vpn: true, ...}, ...}
+		//
+		// Input data deliberately, both of them: a per-unit flag would
+		// require probing every container, which forces their evaluation
+		// and freezes the member set under the cue 0.17 evaluator in any
+		// project with cross-container references.
+		exclude: [...string] | *[]
+		#exclude: [Key=string]: true
 	}
 
-	// The normalized member set: explicit members, or every container.
+	// The effective exclusion set: the human list plus mixin injections.
+	_exclude: {
+		for k in #static.exclude {(k): true}
+		for k, _ in #static.#exclude {(k): true}
+	}
+
+	// The normalized member set: explicit members, or every container not
+	// in the exclusion set.
 	_members: {
 		if #static.members != _|_ {#static.members}
-		if #static.members == _|_ {for k, _ in units.containers {(k): {}}}
+		if #static.members == _|_ {
+			for k, _ in units.containers
+			if _exclude[k] == _|_ {(k): {}}
+		}
 	}
 
 	_keys: list.SortStrings([for k, _ in _members {k}])

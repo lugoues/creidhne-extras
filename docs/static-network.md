@@ -135,11 +135,16 @@ drops them).
   The primary `units.#container` has no key to inject by, so it cannot be
   a member. Quadlets using this mixin should declare all networked
   services as named containers.
-- **Omitted `members` means everyone**: there is no opt-out in that mode,
-  and no `ip` pins (those live in the member map). List members
-  explicitly when a member needs a pin or a container must stay off the
-  network; non-member containers are left untouched. The container-site
-  `#extraNetworks`/`#extraHosts` work in both modes.
+- **Omitted `members` means everyone except the exclusion set**:
+  `#static.exclude: ["redis"]` is the human channel; composing mixins
+  inject their infrastructure containers through the `#static.#exclude`
+  map instead (maps merge, lists cannot; contribute via an open
+  literal, e.g. `#GluetunMixin` sets `#exclude: {vpn: true, ...}`).
+  Input data deliberately, both: a per-unit flag would require probing
+  every container, which freezes the member set in any project with
+  cross-container references. No `ip` pins in all-mode (those live in
+  the member map); non-member containers are left untouched. The
+  container-site `#extraNetworks`/`#extraHosts` work in both modes.
 - **`#extraNetworks`/`#extraHosts` on a non-member container are silently
   ignored** (selective mode): the injection no-ops there, and closedness
   cannot reject definition fields. Check membership first when an extra
