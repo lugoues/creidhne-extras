@@ -89,10 +89,12 @@ Network=grafana-proxy.network
    ([podman#28705](https://github.com/podman-container-tools/podman/issues/28705),
    fixed for podman 6). Until podman 6 is the floor, the DNS side-channel
    is a known, accepted gap in the pair-network isolation.
-4. The `creidhne.pair=<name>` marker declares the isolation contract:
-   exactly two containers (service + proxy) should ever attach. A future
-   `crei lint` rule can count graph attachments against it; the marker is
-   the whole contract, so the check needs no knowledge of this helper.
+4. The `creidhne.pair=<name>` marker declares the isolation contract: the
+   owning quadlet's units (one or several route-serving containers) plus
+   exactly one external attacher, the proxy. crei's graph rules enforce it:
+   a second foreign attacher fails `validate`, a missing proxy or missing
+   service warns. The marker is the whole contract, so the check needs no
+   knowledge of this helper.
 
 Traefik attaches, it never defines: exactly one owner per pair network (the
 service quadlet); the proxy side is a single `Network:` entry.

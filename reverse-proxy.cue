@@ -35,10 +35,11 @@ import (
 //	    }
 //	}
 //
-// The pair network carries a "creidhne.pair=<pair>" marker label: exactly two
-// containers (the service and the proxy) should ever attach to it. A future
-// crei lint rule can verify that cardinality from the graph; the marker is
-// the whole contract, so the check needs no knowledge of this helper.
+// The pair network carries a "creidhne.pair=<pair>" marker label: the owning
+// quadlet's units (one or several route-serving containers) plus exactly one
+// external attacher, the proxy. crei's graph rules enforce it (crei lint /
+// validate); the marker is the whole contract, so the check needs no
+// knowledge of this helper.
 #ReverseProxyMixin: {
 	// name unifies with the quadlet's name when mixed into a #Quadlet.
 	name: c.#UnitName
