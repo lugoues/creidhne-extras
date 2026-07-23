@@ -76,7 +76,10 @@ import (
 		// conventional `secrets` registry at every instantiation site.
 		private_key: c.#SecretName
 		addresses:   c.#SecretName
-		auth_config: c.#SecretName
+		// Control-server auth (HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE).
+		// Optional: instances that never talk to gluetun's control server
+		// (e.g. no port forwarding) can omit it.
+		auth_config?: c.#SecretName
 
 		// The uplink quadlet this VPN tunnels through: pass the whole
 		// quadlet value (uplink: internet_egress); the mixin derives its
@@ -97,6 +100,12 @@ import (
 		//	}
 		#network: units.networks.vpn
 		#dns:     _subnet.byName.vpn
+
+		// #ip is the same address under its other hat: the VPN container's
+		// IP on the client network, for non-DNS uses (probe targets,
+		// firewall rules, interpolated config).
+		#ip: _subnet.byName.vpn
+
 		// #service is the VPN container's systemd service: order clients
 		// behind it (Requires + After) so they never start ahead of their
 		// only route and resolver.
@@ -376,11 +385,13 @@ import (
 								type:   "env"
 								target: "WIREGUARD_ADDRESSES"
 							},
+						],
+						[if #gluetun.auth_config != _|_ {
 							#gluetun.auth_config & {
 								type:   "env"
 								target: "HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE"
-							},
-						],
+							}
+						}],
 						[if #gluetun.public_key != _|_ {
 							#gluetun.public_key & {
 								type:   "env"

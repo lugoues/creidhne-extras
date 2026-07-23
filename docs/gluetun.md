@@ -49,7 +49,8 @@ firecrawl: creidhne.#Quadlet & ce.#TraefikProxyMixin & ce.#StaticNetworkMixin & 
 | `provider` | `string` | required | gluetun `VPN_SERVICE_PROVIDER` |
 | `countries` | `[...string]` | required | `SERVER_COUNTRIES`, comma-joined |
 | `port_forwarding` | `bool` | `false` | `PORT_FORWARD_ONLY` + `VPN_PORT_FORWARDING` |
-| `private_key`, `addresses`, `auth_config` | `#SecretName` | required | WireGuard key/addresses and control-server auth, from the secrets registry |
+| `private_key`, `addresses` | `#SecretName` | required | WireGuard key and addresses, from the secrets registry |
+| `auth_config?` | `#SecretName` | none | Control-server auth (`HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE`); omit when nothing talks to gluetun's control server |
 | `uplink` | quadlet | required | The quadlet this VPN tunnels through; the mixin derives its network handle, service ordering, and cidr (`FIREWALL_OUTBOUND_SUBNETS`) |
 | `image` | image ref | required | The gluetun image the build wraps; any tag or digest reference |
 | `lan_blocks` | `[...string]` | RFC1918+link-local | Nets the preflight refuses to forward into; overriding replaces the list (append host-specific blocks like the default podman bridge gateway) |
@@ -92,6 +93,10 @@ firecrawl: creidhne.#Quadlet & ce.#TraefikProxyMixin & ce.#StaticNetworkMixin & 
   primary `#container`'s own `Network:` list).
 - `#gluetun.#dns` — the VPN container's address: gateway (via the
   network route) and DNS for every client (`DNS: [#gluetun.#dns]`).
+- `#gluetun.#ip` — the same address under its other hat, for non-DNS
+  uses (probe targets, firewall rules, interpolated config).
+- `#gluetun.#service` — the VPN container's systemd service; order
+  clients behind it (`Requires` + `After`).
 
 Do not write `units.networks.vpn.#self` directly in an additional
 container's `Network:` list: that reference freezes under the cue 0.17
