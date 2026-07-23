@@ -16,7 +16,9 @@ import (
 // pointing at the VPN container (metric 200, installed per-client by
 // netavark); gluetun also joins the uplink network for its own tunnel
 // egress. A preflight strips the self-referencing route from gluetun
-// itself, drops LAN-bound forwards, and installs tun0 NAT post-rules.
+// itself and writes the post-rules gluetun applies after building its own
+// firewall (pre-entrypoint iptables calls would be flushed by it): tun0
+// NAT, LAN-destination drops, and the client forward policy.
 // Killswitch by construction: clients have no other route, so a dead
 // tunnel is no egress, not leaked egress.
 //
@@ -33,10 +35,13 @@ import (
 //	        auth_config: secrets.gluetun_auth
 //	        uplink: internet_egress
 //	    }
-//	    units: containers: api: Container: {
-//	        Image: "docker.io/fc-api"
-//	        DNS: [#gluetun.#dns]
-//	        #extraNetworks: [#gluetun.#network.#self]
+//	    units: containers: api: {
+//	        Unit: {Requires: [#gluetun.#service], After: [#gluetun.#service]}
+//	        Container: {
+//	            Image: "docker.io/fc-api"
+//	            DNS: [#gluetun.#dns]
+//	            #extraNetworks: [#gluetun.#network.#self]
+//	        }
 //	    }
 //	}
 //
@@ -92,6 +97,10 @@ import (
 		//	}
 		#network: units.networks.vpn
 		#dns:     _subnet.byName.vpn
+		// #service is the VPN container's systemd service: order clients
+		// behind it (Requires + After) so they never start ahead of their
+		// only route and resolver.
+		#service: units.containers.vpn.#service
 
 		// --- wireguard tuning (each emits its env only when set) ---
 		// WIREGUARD_PUBLIC_KEY: a podman secret, wired below.
@@ -254,7 +263,7 @@ import (
 
 					RUN apk add --no-cache \
 						nftables \
-						jq
+						jq bind-tools
 
 					COPY . /
 					ENTRYPOINT ["/preflight.sh"]
@@ -293,18 +302,20 @@ import (
 						ip route show default | grep -q . || { echo "FATAL: no default route left"; exit 1; }
 						echo "PREFLIGHT OK: $(ip route show default)"
 
-						EGRESS_IF=$(ip -o addr show | grep "${GATEWAY_IP}/" | awk '{print $2}')
-
-						for net in \#(strings.Join(#gluetun.lan_blocks, " ")); do
-								iptables -A FORWARD -i "$EGRESS_IF" -d "$net" -j DROP
-						done
-
-						cat > /iptables/post-rules.txt <<EOF
-						iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
-						iptables -A FORWARD -i $VPN_IF ! -o tun0 -m state ! --state RELATED,ESTABLISHED -j DROP
-						iptables -A FORWARD -i $VPN_IF -o tun0 -j ACCEPT
-						iptables -A FORWARD -i tun0 -o $VPN_IF -m state --state RELATED,ESTABLISHED -j ACCEPT
-						EOF
+						# Everything firewall-shaped goes through post-rules: gluetun
+						# flushes the tables while building its own firewall, so rules
+						# added here directly would not survive. LAN drops come first;
+						# a client packet routed out tun0 toward a LAN destination
+						# must die before the blanket tun0 ACCEPT.
+						{
+							echo "iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE"
+							for net in \#(strings.Join(#gluetun.lan_blocks, " ")); do
+								echo "iptables -A FORWARD -i $VPN_IF -d $net -j DROP"
+							done
+							echo "iptables -A FORWARD -i $VPN_IF ! -o tun0 -m state ! --state RELATED,ESTABLISHED -j DROP"
+							echo "iptables -A FORWARD -i $VPN_IF -o tun0 -j ACCEPT"
+							echo "iptables -A FORWARD -i tun0 -o $VPN_IF -m state --state RELATED,ESTABLISHED -j ACCEPT"
+						} > /iptables/post-rules.txt
 
 						exec /gluetun-entrypoint
 						"""#
@@ -337,7 +348,8 @@ import (
 					Sysctl: [
 						"net.ipv4.ip_forward=1",
 						"net.ipv4.ip_unprivileged_port_start=0",
-						"net.ipv6.conf.all.disable_ipv6=0",
+						// v4-only stack:
+						"net.ipv6.conf.all.disable_ipv6=1",
 					]
 
 					Network: [
