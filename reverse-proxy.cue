@@ -107,6 +107,27 @@ import (
 // traefik.docker.network points traefik at the pair network even when the
 // container sits on several networks; without it traefik picks an arbitrary
 // IP (intermittent 502s).
+//
+// A route's `protocol` picks the label family. "tcp" routes traefik as a raw
+// splice, for protocols it cannot parse; they need their own entrypoint,
+// since raw TCP carries nothing to demultiplex a shared port on, and
+// HostSNI(`*`) as the rule when there is no TLS to read an SNI from:
+//
+//	socks_proxy: creidhne.#Quadlet & ce.#TraefikProxyMixin & {
+//	    name: "socks-proxy"
+//	    #exposes: routes: socks: {
+//	        protocol: "tcp"
+//	        port:     1080
+//	        rule:     "HostSNI(`*`)"
+//	        entrypoints: ["socks"]
+//	    }
+//	}
+//
+// Backends behind a tcp route see traefik's address, not the client's:
+// traefik can send PROXY protocol (a loadbalancer.proxyProtocol.version
+// extraLabel) but only if the backend reads it. Client-IP ACLs in the backend
+// stop working the moment it moves behind a tcp route; move them to a
+// tcp ipallowlist middleware or the entrypoint's bind address.
 #TraefikProxyMixin: #ReverseProxyMixin & {
 	name: c.#UnitName
 	// Declared for lexical visibility inside #exposes (conjuncts of a
@@ -151,6 +172,19 @@ import (
 			])) > 0
 			why: "splice #exposes.#label (or a route's #label) into a container or pod Label list; without it traefik never discovers the service"
 		}
+		// A tcp router without entrypoints attaches to every entrypoint, and
+		// a raw-TCP catch-all (HostSNI(`*`)) there competes for web/websecure
+		// traffic. #checks (not a required-field marker) so it fires on every
+		// command, render included, with this message. Counted with positive
+		// `!= _|_` guards: an absent-field access inside a guard is an error
+		// that silently skips the element, so "is absent" cannot be asked
+		// directly — instead every tcp route must appear in the
+		// has-entrypoints count.
+		"traefik-proxy/tcp-entrypoints": {
+			assert: len([for _, r in #exposes.routes if r._proto == "tcp" {r.port}]) ==
+				len([for _, r in #exposes.routes if r._proto == "tcp" if r.entrypoints != _|_ if len(r.entrypoints) > 0 {r.port}])
+			why: "a tcp route needs its own entrypoints (raw TCP cannot share a port); list them explicitly, even if that is every entrypoint"
+		}
 		...
 	}
 
@@ -171,6 +205,23 @@ import (
 		// owns a same-named service by default; point service at another
 		// route's router to share one (2 routers, 1 service).
 		routes: [Route=string]: {
+			// protocol selects the traefik label family: "http" for HTTP
+			// routers and services, "tcp" for the raw-TCP ones (SOCKS, redis,
+			// syslog, anything traefik should splice rather than parse).
+			// Every knob below spells the same way in both families, so the
+			// family is the only difference and one prefix carries it.
+			//
+			// No "udp", deliberately: udp routers take no rule at all, which
+			// contradicts this struct's required `rule`. That wants its own
+			// shape, not a third value here.
+			protocol: *"http" | "tcp"
+
+			// _proto collapses protocol's star-default to a concrete string,
+			// the #serviceName trick below. Interpolations and comprehensions
+			// read this, never `protocol` directly: unifying two marked
+			// defaults is unresolvable.
+			_proto: "\(protocol)"
+
 			// router keys the traefik router; unique per quadlet.
 			router: string | *"\(name)-\(Route)"
 			// service the router binds to. Explicit always: traefik only
@@ -198,33 +249,46 @@ import (
 			// quotes: the emitted label is single-quoted so rules with
 			// spaces survive quadlet's word-splitting.
 			rule!: string & !~"'"
-			// Router entrypoints (e.g. ["websecure"]); omitted: traefik default.
+			// TCP routers match on an entirely different vocabulary, and an
+			// HTTP-shaped rule there is a silent no-match rather than an
+			// error: traefik loads the router and it simply never fires.
+			// Require one of the TCP matchers (HostSNI, HostSNIRegexp,
+			// ClientIP, ALPN) to appear (contains, not anchored, so
+			// composition with &&/||/! still passes). Non-TLS TCP
+			// specifically needs HostSNI(`*`).
+			if _proto == "tcp" {
+				rule: =~"(HostSNI(Regexp)?|ClientIP|ALPN)\\("
+			}
+			// Router entrypoints (e.g. ["websecure"]); omitted: traefik
+			// default. Required (non-empty) for tcp routes, enforced by the
+			// traefik-proxy/tcp-entrypoints check.
 			entrypoints?: [...string]
 			// Router priority; omitted: traefik's rule-length default.
 			priority?: int & >0
 			// Middleware names applied to this router, in order. The
 			// definitions themselves are user-named: declare them in
-			// extraLabels.
+			// extraLabels. TCP routers accept only the tcp middlewares
+			// (ipallowlist, inflightconn).
 			middlewares?: [...string]
 			// Appended verbatim: middleware definitions, TLS options, ...
 			extraLabels?: [...c.#KeyValue]
 
 			_core: list.Concat([
 				[
-					"'traefik.http.routers.\(router).rule=\(rule)'",
-					"traefik.http.routers.\(router).service=\(#serviceName)",
+					"'traefik.\(_proto).routers.\(router).rule=\(rule)'",
+					"traefik.\(_proto).routers.\(router).service=\(#serviceName)",
 				],
 				[if _own {
-					"traefik.http.services.\(#serviceName).loadbalancer.server.port=\(port)"
+					"traefik.\(_proto).services.\(#serviceName).loadbalancer.server.port=\(port)"
 				}],
 				[if entrypoints != _|_ {
-					"traefik.http.routers.\(router).entrypoints=" + strings.Join(entrypoints, ",")
+					"traefik.\(_proto).routers.\(router).entrypoints=" + strings.Join(entrypoints, ",")
 				}],
 				[if priority != _|_ {
-					"traefik.http.routers.\(router).priority=\(priority)"
+					"traefik.\(_proto).routers.\(router).priority=\(priority)"
 				}],
 				[if middlewares != _|_ {
-					"traefik.http.routers.\(router).middlewares=" + strings.Join(middlewares, ",")
+					"traefik.\(_proto).routers.\(router).middlewares=" + strings.Join(middlewares, ",")
 				}],
 				[if extraLabels != _|_ for l in extraLabels {l}],
 			])
