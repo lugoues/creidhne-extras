@@ -30,9 +30,9 @@ import (
 //	        provider: "mullvad"
 //	        countries: ["Sweden"]
 //	        port_forwarding: false
-//	        private_key: secrets.mullvad_wg_key
-//	        addresses:   secrets.mullvad_wg_addresses
-//	        auth_config: secrets.gluetun_auth
+//	        private_key: secrets.mullvad_wg_key.#ref
+//	        addresses:   secrets.mullvad_wg_addresses.#ref
+//	        auth_config: secrets.gluetun_auth.#ref
 //	        uplink: internet_egress
 //	    }
 //	    units: containers: api: {
@@ -66,6 +66,8 @@ import (
 		countries: [...string]
 		// Provider port forwarding (PORT_FORWARD_ONLY + VPN_PORT_FORWARDING).
 		port_forwarding: bool | *false
+		// LOG_LEVEL. Defaulted quieter than upstream's info.
+		log_level: *"warn" | "debug" | "info" | "error"
 		// The gluetun image the build wraps; any reference works (tag or
 		// digest). Required: pin per instance.
 		image: c.#ImageName
@@ -411,6 +413,7 @@ import (
 						[
 							"FIREWALL_OUTBOUND_SUBNETS=\(#gluetun._uplinkCIDR)",
 							"GATEWAY_IP=\(_subnet.byName.vpn)",
+							"LOG_LEVEL=\(#gluetun.log_level)",
 							"PORT_FORWARD_ONLY=\(_pf)",
 							"SERVER_COUNTRIES=\(strings.Join(#gluetun.countries, ","))",
 							"VPN_PORT_FORWARDING=\(_pf)",
