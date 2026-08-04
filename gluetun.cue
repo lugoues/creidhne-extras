@@ -2,7 +2,6 @@ package creidhne_extras
 
 import (
 	"list"
-	"net"
 	"strings"
 
 	c "github.com/lugoues/creidhne"
@@ -26,7 +25,7 @@ import (
 //	    name: "firecrawl"
 //	    #static: subnet: "10.30.0.0/24"
 //	    #gluetun: {
-//	        network:  subnet: "10.20.0.0/24"
+//	        network:  subnet: subnets.myvpn // the host's ce.#Subnet plan
 //	        provider: "mullvad"
 //	        countries: ["Sweden"]
 //	        port_forwarding: false
@@ -168,15 +167,19 @@ import (
 		// tools can use the names too.
 		//
 		//	#gluetun: {
-		//	    network: {subnet: "10.20.0.0/24", members: ["qbit"]}
+		//	    network: {subnet: subnets.myvpn, members: ["qbit"]}
 		//	    forward_up_command: "curl -s http://\(#gluetun.#ips.qbit):8080/api/v2/app/setPreferences ..."
 		//	}
 		//	units: containers: qbit: Container: {
 		//	    #extraNetworks: [#gluetun.#network.#self & {ip: #gluetun.#ips.qbit}]
 		//	}
 		network: {
-			// One IPv4 CIDR for the client network.
-			subnet: string & net.IPCIDR
+			// The client network's #Subnet plan (the host's subnets
+			// registry). Allocation (the CIDR) comes from the plan; the
+			// mixin unifies its own layout onto it below (vpn + members
+			// statics, dynamic_start), so a plan carrying a conflicting
+			// layout fails loudly.
+			subnet: #Subnet
 			// Static client names, addressed in author order after the vpn
 			// container; append-only, like #StaticNetworkMixin's members.
 			members: [...string] | *[]
@@ -212,9 +215,10 @@ import (
 		...
 	}
 
-	_subnet: #Subnet & {
-		#cidr: #gluetun.network.subnet
-
+	// The input plan plus this mixin's layout, as two conjuncts (the
+	// proven shape from the shared stacks).
+	_subnet: #gluetun.network.subnet
+	_subnet: {
 		// +0 collapses the input's star-default: unifying it directly with
 		// #Subnet's own *10 default is two marked defaults, unresolvable.
 		dynamicStart: #gluetun.network.dynamic_start + 0
