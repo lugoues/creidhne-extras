@@ -165,10 +165,17 @@ import (
 		// reference this same instance (#exposes.#label) into elements that
 		// never resolve. The unification guards double as type filters, so
 		// #Rendered structs in the pools never hit a mixed-type comparison.
+		// Equality guards, not unification: iterating a nested label splice
+		// yields a phantom schema element (#LabelValue | [...]) that UNIFIES
+		// with any label string, so the unification guard is satisfied by
+		// ANY nested splice (e.g. another mixin's labels) even when the
+		// traefik label was never placed - the check silently passes on
+		// misconfigured quadlets. == is false for the non-concrete phantom,
+		// so it filters cleanly; (e & [...]) stays as the list type filter.
 		"traefik-proxy/label-placed": {
 			assert: len(list.Concat([
-				[for pool in _labelPools for e in pool if (e & "traefik.enable=true") != _|_ {e}],
-				[for pool in _labelPools for e in pool if (e & [...]) != _|_ for x in e if (x & "traefik.enable=true") != _|_ {x}],
+				[for pool in _labelPools for e in pool if e == "traefik.enable=true" {e}],
+				[for pool in _labelPools for e in pool if (e & [...]) != _|_ for x in e if x == "traefik.enable=true" {x}],
 			])) > 0
 			why: "splice #exposes.#label (or a route's #label) into a container or pod Label list; without it traefik never discovers the service"
 		}
