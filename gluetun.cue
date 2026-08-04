@@ -23,7 +23,7 @@ import (
 //
 //	firecrawl: creidhne.#Quadlet & ce.#StaticNetworkMixin & ce.#GluetunMixin & {
 //	    name: "firecrawl"
-//	    #static: subnet: "10.30.0.0/24"
+//	    #static: subnet: subnets.lan // the host's ce.#Subnet plan
 //	    #gluetun: {
 //	        network:  subnet: subnets.myvpn // the host's ce.#Subnet plan
 //	        provider: "mullvad"

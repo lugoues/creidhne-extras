@@ -23,7 +23,7 @@ import (
 //	firecrawl: creidhne.#Quadlet & ce.#StaticNetworkMixin & {
 //	    name: "firecrawl"
 //	    #static: {
-//	        subnet: "10.30.0.0/24"
+//	        subnet: subnets.lan // the host's ce.#Subnet plan
 //	        members: {
 //	            dashboard: _
 //	            api:       _
@@ -42,8 +42,11 @@ import (
 	name: c.#UnitName
 
 	#static: {
-		// One IPv4 CIDR, any prefix length; offsets are bounds-checked.
-		subnet: string
+		// The network's #Subnet plan (the host's subnets registry).
+		// Allocation only: this mixin keeps its own member addressing
+		// (start offset + explicit ip pins), which the plan's positional
+		// static list cannot express; the plan contributes the CIDR.
+		subnet: #Subnet
 		// Handle of the placed network unit (file <quadlet>-<networkName>.network).
 		networkName: string | *"static"
 		// First host offset auto-assigned; the gateway takes low addresses.
@@ -96,7 +99,7 @@ import (
 
 	// net.ParseCIDR/AddIP are cue 0.17 builtins (crei >= v2.6.0); they
 	// replaced hand-rolled div/mod octet math.
-	_p:     net.ParseCIDR(#static.subnet)
+	_p:     net.ParseCIDR(#static.subnet.cidr)
 	_hosts: math.Exp2(32-_p.prefix_len) - 2
 	_ipOf: {for k, m in _members {
 		if m.ip != _|_ {(k): m.ip}
@@ -144,7 +147,7 @@ import (
 			(#static.networkName): #InternalNetworkSpec & {
 				Network: {
 					DisableDNS: true
-					Subnet: [#static.subnet]
+					Subnet: [#static.subnet.cidr]
 					...
 				}
 				...
