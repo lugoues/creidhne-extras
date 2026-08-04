@@ -266,6 +266,7 @@ import (
 			if _proto == "tcp" {
 				rule: =~"(HostSNI(Regexp)?|ClientIP|ALPN)\\("
 			}
+
 			// Router entrypoints (e.g. ["websecure"]); omitted: traefik
 			// default. Required (non-empty) for tcp routes, enforced by the
 			// traefik-proxy/tcp-entrypoints check.
