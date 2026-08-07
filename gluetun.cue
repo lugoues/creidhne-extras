@@ -140,9 +140,35 @@ import (
 		forward_provider?: "private internet access" | "perfect privacy" | "privatevpn" | "protonvpn"
 		// VPN_PORT_FORWARDING_STATUS_FILE (default /tmp/gluetun/forwarded_port).
 		forward_status_file?: string
-		// VPN_PORT_FORWARDING_UP_COMMAND / _DOWN_COMMAND.
+		// VPN_PORT_FORWARDING_UP_COMMAND / _DOWN_COMMAND. With forward_target
+		// set these still run: the generated script invokes them after its own
+		// rules, and rewrites gluetun's {{PORT}} / {{PORTS}} / {{VPN_INTERFACE}}
+		// placeholders into the shell variables it was passed, because gluetun
+		// expands those only in the env var, never inside a script file.
 		forward_up_command?:   string
 		forward_down_command?: string
+
+		// Deliver provider-forwarded ports to a client container.
+		//
+		// Gluetun's port forwarding assumes the app shares gluetun's network
+		// namespace: the packet arrives addressed to gluetun's own tunnel IP,
+		// is delivered locally, and never enters FORWARD. Every upstream
+		// mechanism for it is namespace-local - LISTENING_PORTS redirects port
+		// to port with no destination address, FIREWALL_VPN_INPUT_PORTS opens
+		// INPUT. Here the client is a separate container, so nothing reaches it
+		// without an explicit DNAT.
+		//
+		// Names a network.members entry, not an address: the rule needs a
+		// stable destination, and members is what provides one on a network
+		// that is otherwise DNS-less with dynamic client addresses. A name that
+		// is not a member fails loudly against #ips.
+		//
+		//	#gluetun: {
+		//	    port_forwarding: true
+		//	    network: {subnet: subnets.qbit, members: ["qbit"]}
+		//	    forward_target: "qbit"
+		//	}
+		forward_target?: string
 		// VPN_UP_COMMAND / VPN_DOWN_COMMAND ({{VPN_INTERFACE}} available).
 		vpn_up_command?:   string
 		vpn_down_command?: string
@@ -227,6 +253,21 @@ import (
 
 	_pf: [if #gluetun.port_forwarding {"on"}, "off"][0]
 
+	// With forward_target set the mixin owns gluetun's single up/down command
+	// slot and points it at the generated script, which runs the caller's own
+	// commands from inside. Without it the caller's commands pass through
+	// untouched, so existing consumers are unaffected.
+	_pfUp: [
+		if #gluetun.forward_target != _|_ {#""/bin/sh -c '/port-forward.sh up {{VPN_INTERFACE}} {{PORT}} {{PORTS}}'""#},
+		if #gluetun.forward_up_command != _|_ {#gluetun.forward_up_command},
+		"",
+	][0]
+	_pfDown: [
+		if #gluetun.forward_target != _|_ {#""/bin/sh -c '/port-forward.sh down {{VPN_INTERFACE}} {{PORT}} {{PORTS}}'""#},
+		if #gluetun.forward_down_command != _|_ {#gluetun.forward_down_command},
+		"",
+	][0]
+
 	units: {
 		networks: {
 			vpn: {
@@ -291,49 +332,121 @@ import (
 					"iptables/post-rules.txt": """
 
 						"""
+					// Caller hooks, verbatim: no CUE-side escaping, no nesting inside
+					// our shell. The script substitutes the placeholders and runs them.
+					if #gluetun.forward_up_command != _|_ {
+						"port-forward-up.cmd": #gluetun.forward_up_command
+					}
+					if #gluetun.forward_down_command != _|_ {
+						"port-forward-down.cmd": #gluetun.forward_down_command
+					}
+					if #gluetun.forward_target != _|_ {
+						"port-forward.sh": {
+							mode:    "0755"
+							content: #"""
+								#!/bin/sh
+								# Deliver a provider-forwarded port to a client container.
+								#
+								# Gluetun hands the port to its OWN namespace; the client is a
+								# separate container reached by routing, so the packet needs a DNAT
+								# to get there and a FORWARD accept to survive. The stack's
+								# post-rules pass tun0->client only for RELATED,ESTABLISHED and an
+								# inbound connection is NEW, so DNAT alone is not enough.
+								set -e
+								ACTION="$1"; IFACE="$2"; PORT="$3"; PORTS="$4"
+
+								echo "running port-forward ${ACTION} ${IFACE} ${PORT}" >| /tmp/forward.log
+
+								# The caller's command lives in its own file, byte for byte, so our
+								# quoting never meets theirs. Substituting into a shell string here
+								# instead would break the documented qBittorrent hook, which single
+								# quotes its JSON payload: a $PORT placed inside those quotes is
+								# never expanded. sed does the replacement on the raw text first,
+								# which is what gluetun itself does to the env var, and only then
+								# does a shell see it.
+								run_hook() {
+									[ -f "$1" ] || return 0
+									cmd=$(sed -e "s|{{PORTS}}|$PORTS|g" \
+										-e "s|{{PORT}}|$PORT|g" \
+										-e "s|{{VPN_INTERFACE}}|$IFACE|g" "$1")
+
+									echo Running hook: $cmd
+									eval $cmd
+								}
+								TARGET="\#(#gluetun.#ips[#gluetun.forward_target])"
+
+								# Dedicated chains, created-or-flushed. Gluetun re-runs the up
+								# command on every port refresh and every reconnect, so appending
+								# straight to PREROUTING/FORWARD would leave a duplicate rule set
+								# behind each time. The jumps are re-added when missing because
+								# gluetun rebuilds its firewall from scratch on reconnect.
+								iptables -t nat -N GLUETUN_PF 2>/dev/null || iptables -t nat -F GLUETUN_PF
+								iptables -N GLUETUN_PF_FWD 2>/dev/null || iptables -F GLUETUN_PF_FWD
+								iptables -t nat -C PREROUTING -i "$IFACE" -j GLUETUN_PF 2>/dev/null \
+									|| iptables -t nat -A PREROUTING -i "$IFACE" -j GLUETUN_PF
+								iptables -C FORWARD -i "$IFACE" -j GLUETUN_PF_FWD 2>/dev/null \
+									|| iptables -I FORWARD 1 -i "$IFACE" -j GLUETUN_PF_FWD
+
+								if [ "$ACTION" = "up" ] && [ -n "$PORT" ]; then
+									# udp as well as tcp: a torrent client needs DHT and uTP, not
+									# just its listen socket.
+									for proto in tcp udp; do
+										iptables -t nat -A GLUETUN_PF -p "$proto" --dport "$PORT" \
+											-j DNAT --to-destination "$TARGET:$PORT"
+										iptables -A GLUETUN_PF_FWD -p "$proto" -d "$TARGET" --dport "$PORT" -j ACCEPT
+									done
+									echo "port-forward: $PORT -> $TARGET on $IFACE"
+									run_hook /port-forward-up.cmd
+								else
+									echo "port-forward: cleared on $IFACE"
+									run_hook /port-forward-down.cmd
+								fi
+								"""#
+						}
+					}
 					"preflight.sh": {
 						mode:    "0777"
 						content: #"""
-						#!/bin/sh
-						set -e
-						# gluetun preflight: strip podman's self-referencing default route.
-						# The network-wide --route 0.0.0.0/0,<vpn-ip> is meant for CLIENTS.
-						# Gluetun IS that address, so it must not keep the route, and unlike
-						# a pure forwarder it originates traffic (the WireGuard tunnel), so
-						# the source-based rules pointing at table 200 must go too.
+							#!/bin/sh
+							set -e
+							# gluetun preflight: strip podman's self-referencing default route.
+							# The network-wide --route 0.0.0.0/0,<vpn-ip> is meant for CLIENTS.
+							# Gluetun IS that address, so it must not keep the route, and unlike
+							# a pure forwarder it originates traffic (the WireGuard tunnel), so
+							# the source-based rules pointing at table 200 must go too.
 
-						VPN_IF=$(ip -j -4 addr show | jq --arg gateway_ip ${GATEWAY_IP} -r '.[] | select(.addr_info[].local == $gateway_ip) | .ifname')
-						[ -n "$VPN_IF" ] || { echo "FATAL: no interface with ${GATEWAY_IP}" >&2; exit 1; }
+							VPN_IF=$(ip -j -4 addr show | jq --arg gateway_ip ${GATEWAY_IP} -r '.[] | select(.addr_info[].local == $gateway_ip) | .ifname')
+							[ -n "$VPN_IF" ] || { echo "FATAL: no interface with ${GATEWAY_IP}" >&2; exit 1; }
 
-						# every local v4 address, so we catch the DHCP'd uplink IP too
-						ip -o -4 addr show | awk '{split($4,a,"/"); print a[1]}' | grep -v '^127\.' | \
-						while read -r ip; do
-							ip rule del from "$ip" lookup 200 2>/dev/null || true
-						done
-
-						ip route del default via ${GATEWAY_IP} dev "$VPN_IF" metric 200 2>/dev/null || true
-						ip route flush table 200 2>/dev/null || true
-
-						ip route show default | grep -q . || { echo "FATAL: no default route left"; exit 1; }
-						echo "PREFLIGHT OK: $(ip route show default)"
-
-						# Everything firewall-shaped goes through post-rules: gluetun
-						# flushes the tables while building its own firewall, so rules
-						# added here directly would not survive. LAN drops come first;
-						# a client packet routed out tun0 toward a LAN destination
-						# must die before the blanket tun0 ACCEPT.
-						{
-							echo "iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE"
-							for net in \#(strings.Join(#gluetun.lan_blocks, " ")); do
-								echo "iptables -A FORWARD -i $VPN_IF -d $net -j DROP"
+							# every local v4 address, so we catch the DHCP'd uplink IP too
+							ip -o -4 addr show | awk '{split($4,a,"/"); print a[1]}' | grep -v '^127\.' | \
+							while read -r ip; do
+								ip rule del from "$ip" lookup 200 2>/dev/null || true
 							done
-							echo "iptables -A FORWARD -i $VPN_IF ! -o tun0 -m state ! --state RELATED,ESTABLISHED -j DROP"
-							echo "iptables -A FORWARD -i $VPN_IF -o tun0 -j ACCEPT"
-							echo "iptables -A FORWARD -i tun0 -o $VPN_IF -m state --state RELATED,ESTABLISHED -j ACCEPT"
-						} > /iptables/post-rules.txt
 
-						exec /gluetun-entrypoint
-						"""#
+							ip route del default via ${GATEWAY_IP} dev "$VPN_IF" metric 200 2>/dev/null || true
+							ip route flush table 200 2>/dev/null || true
+
+							ip route show default | grep -q . || { echo "FATAL: no default route left"; exit 1; }
+							echo "PREFLIGHT OK: $(ip route show default)"
+
+							# Everything firewall-shaped goes through post-rules: gluetun
+							# flushes the tables while building its own firewall, so rules
+							# added here directly would not survive. LAN drops come first;
+							# a client packet routed out tun0 toward a LAN destination
+							# must die before the blanket tun0 ACCEPT.
+							{
+								echo "iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE"
+								for net in \#(strings.Join(#gluetun.lan_blocks, " ")); do
+									echo "iptables -A FORWARD -i $VPN_IF -d $net -j DROP"
+								done
+								echo "iptables -A FORWARD -i $VPN_IF ! -o tun0 -m state ! --state RELATED,ESTABLISHED -j DROP"
+								echo "iptables -A FORWARD -i $VPN_IF -o tun0 -j ACCEPT"
+								echo "iptables -A FORWARD -i tun0 -o $VPN_IF -m state --state RELATED,ESTABLISHED -j ACCEPT"
+							} > /iptables/post-rules.txt
+
+							exec /gluetun-entrypoint
+							"""#
 					}
 					...
 				}
@@ -435,8 +548,8 @@ import (
 							if #gluetun.forward_listening_ports != _|_ {"VPN_PORT_FORWARDING_LISTENING_PORTS=\(strings.Join([for p in #gluetun.forward_listening_ports {"\(p)"}], ","))"},
 							if #gluetun.forward_provider != _|_ {"VPN_PORT_FORWARDING_PROVIDER=\(#gluetun.forward_provider)"},
 							if #gluetun.forward_status_file != _|_ {"VPN_PORT_FORWARDING_STATUS_FILE=\(#gluetun.forward_status_file)"},
-							if #gluetun.forward_up_command != _|_ {"VPN_PORT_FORWARDING_UP_COMMAND=\(#gluetun.forward_up_command)"},
-							if #gluetun.forward_down_command != _|_ {"VPN_PORT_FORWARDING_DOWN_COMMAND=\(#gluetun.forward_down_command)"},
+							if _pfUp != "" {"VPN_PORT_FORWARDING_UP_COMMAND=\(_pfUp)"},
+							if _pfDown != "" {"VPN_PORT_FORWARDING_DOWN_COMMAND=\(_pfDown)"},
 							if #gluetun.vpn_up_command != _|_ {"VPN_UP_COMMAND=\(#gluetun.vpn_up_command)"},
 							if #gluetun.vpn_down_command != _|_ {"VPN_DOWN_COMMAND=\(#gluetun.vpn_down_command)"},
 						],
