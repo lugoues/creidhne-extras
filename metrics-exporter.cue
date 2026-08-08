@@ -69,6 +69,14 @@ import (
 			interval: string | *"30s"
 			// Metrics path; omitted: prometheus default /metrics.
 			path?: string & =~"^/"
+			// Query parameters appended to the scrape URL. Multi-target
+			// exporters (prometheus-nut-exporter, blackbox, snmp) take the
+			// thing they probe this way, and it cannot be folded into path:
+			// prometheus puts path into url.Path and params into RawQuery, so
+			// a "?" in path is escaped to %3F and never parsed as a query.
+			//
+			//	params: target: ["ups.example.net:3493"]
+			params?: [string]: [...string]
 		}
 
 		// The pair network's unit body, placed at units.networks[networkName].
