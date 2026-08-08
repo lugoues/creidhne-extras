@@ -355,8 +355,6 @@ import (
 								set -e
 								ACTION="$1"; IFACE="$2"; PORT="$3"; PORTS="$4"
 
-								echo "running port-forward ${ACTION} ${IFACE} ${PORT}" >| /tmp/forward.log
-
 								# The caller's command lives in its own file, byte for byte, so our
 								# quoting never meets theirs. Substituting into a shell string here
 								# instead would break the documented qBittorrent hook, which single
@@ -370,8 +368,8 @@ import (
 										-e "s|{{PORT}}|$PORT|g" \
 										-e "s|{{VPN_INTERFACE}}|$IFACE|g" "$1")
 
-									echo Running hook: $cmd
-									eval $cmd
+									echo "Running hook: $cmd"
+									eval "$cmd"
 								}
 								TARGET="\#(#gluetun.#ips[#gluetun.forward_target])"
 
