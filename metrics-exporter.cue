@@ -77,6 +77,18 @@ import (
 			//
 			//	params: target: ["ups.example.net:3493"]
 			params?: [string]: [...string]
+			// Static labels stamped on every series this job scrapes. The
+			// per-instance pattern for exporters that serve one instance per
+			// scrape invocation (DRuggeri nut_exporter: one UPS per scrape,
+			// selected by params) - one job per instance, labeled so series
+			// are distinguishable by more than job name:
+			//
+			//	jobs: primary: {
+			//	    target: "...:9199", path: "/ups_metrics"
+			//	    params: ups: ["primary"]
+			//	    labels: ups: "primary"
+			//	}
+			labels?: [string]: string
 		}
 
 		// The pair network's unit body, placed at units.networks[networkName].
