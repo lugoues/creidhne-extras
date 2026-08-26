@@ -326,6 +326,51 @@ import (
 					"""#
 
 				Context: {
+					// Rotate the VPN server: stop/start the tunnel via gluetun's
+					// control server, then wait for the reconnect. Run manually:
+					// podman exec <vpn-container> /rotate-vpn.sh
+					"rotate-vpn.sh": {
+						mode:    "0755"
+						content: """
+							#!/bin/sh
+							set -eu
+							KEY=$(jq -n -r --argjson auth "$HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE" '$auth.apikey')
+							# Listen address is host:port (host may be 0.0.0.0 or empty);
+							# only the port matters from inside the netns, always dial loopback.
+							ADDR="${HTTP_CONTROL_SERVER_ADDRESS:-:8000}"
+							PORT="${ADDR##*:}"
+							PORT="${PORT:-8000}"
+
+							api() {
+								path="$1"; shift
+								wget -q -O - -T 10 --header="X-API-Key: ${KEY}" "$@" "http://127.0.0.1:${PORT}/v1${path}"
+							}
+							set_status() {
+								api /vpn/status --method=PUT --header="Content-Type: application/json" --body-data='{"status":"'"$1"'"}'
+							}
+
+							old=$(api /publicip/ip | jq -r '.public_ip // empty') || old=""
+
+							set_status stopped
+							# The tunnel is down from here on: retry the start so a transient
+							# control-server error can't strand the VPN stopped.
+							for i in 1 2 3; do
+								set_status running && break
+								[ "$i" = 3 ] && { echo "failed to start VPN, tunnel is DOWN" >&2; exit 1; }
+								sleep 2
+							done
+
+							# Gluetun clears the cached public IP on reconnect; it turning
+							# non-empty again doubles as the tunnel-up health wait.
+							new=""
+							for i in $(seq 30); do
+								new=$(api /publicip/ip | jq -r '.public_ip // empty') && [ -n "$new" ] && break
+								sleep 2
+							done
+							[ -n "$new" ] || { echo "VPN did not come back up within 60s (old IP: ${old:-?})" >&2; exit 1; }
+							echo "rotated: ${old:-?} -> $new"
+							"""
+					}
 					// Placeholder so the path exists in the image; the preflight
 					// overwrites it at start (works because this container is
 					// deliberately not ReadOnly).
