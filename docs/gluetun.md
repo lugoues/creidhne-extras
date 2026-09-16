@@ -47,7 +47,11 @@ firecrawl: creidhne.#Quadlet & ce.#TraefikProxyMixin & ce.#StaticNetworkMixin & 
 | `network.members` | `[...string]` | none | Static client names, addressed after the VPN container (the port-forward callback pattern; see below) |
 | `network.dynamic_start` | `int` | `5` | First dynamic offset; raise when members outgrow the reserve |
 | `provider` | `string` | required | gluetun `VPN_SERVICE_PROVIDER` |
-| `countries` | `[...string]` | required | `SERVER_COUNTRIES`, comma-joined |
+| `countries?` | `[...string]` | none | `SERVER_COUNTRIES`, comma-joined |
+| `regions?` | `[...string]` | none | `SERVER_REGIONS`, comma-joined |
+| `cities?` | `[...string]` | none | `SERVER_CITIES`, comma-joined |
+| `hostnames?` | `[...string]` | none | `SERVER_HOSTNAMES`, comma-joined; the narrowest filter, breaks if the hostname leaves gluetun's server data |
+| `secure_core_only` | `bool` | `false` | `SECURE_CORE_ONLY=on` (ProtonVPN) |
 | `port_forwarding` | `bool` | `false` | `PORT_FORWARD_ONLY` + `VPN_PORT_FORWARDING` |
 | `private_key`, `addresses` | `#SecretName` | required | WireGuard key and addresses, from the secrets registry |
 | `auth_config?` | `#SecretName` | none | Control-server auth (`HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE`); omit when nothing talks to gluetun's control server |

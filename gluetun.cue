@@ -60,9 +60,22 @@ import (
 		// units.containers.<handle>, units.builds.<handle>; files are
 		// "<quadlet>-<handle>.*".
 		handle: string | *"vpn"
-		// gluetun VPN_SERVICE_PROVIDER and SERVER_COUNTRIES.
+		// gluetun VPN_SERVICE_PROVIDER.
 		provider: string
-		countries: [...string]
+		// --- server selection (each emits its env only when set) ---
+		// Comma-joined filters that narrow the server pool; combine freely.
+		// None set means any server of the provider.
+		// SERVER_COUNTRIES.
+		countries?: [...string]
+		// SERVER_REGIONS.
+		regions?: [...string]
+		// SERVER_CITIES.
+		cities?: [...string]
+		// SERVER_HOSTNAMES: the narrowest filter. A hostname that drops out of
+		// gluetun's server data breaks the container until this is changed.
+		hostnames?: [...string]
+		// SECURE_CORE_ONLY (ProtonVPN): only Secure Core servers.
+		secure_core_only: bool | *false
 		// Provider port forwarding (PORT_FORWARD_ONLY + VPN_PORT_FORWARDING).
 		port_forwarding: bool | *false
 		// LOG_LEVEL. Defaulted quieter than upstream's info.
@@ -330,7 +343,7 @@ import (
 					// control server, then wait for the reconnect. Run manually:
 					// podman exec <vpn-container> /rotate-vpn.sh
 					"rotate-vpn.sh": {
-						mode:    "0755"
+						mode: "0755"
 						content: """
 							#!/bin/sh
 							set -eu
@@ -575,7 +588,11 @@ import (
 							"GATEWAY_IP=\(_subnet.byName.vpn)",
 							"LOG_LEVEL=\(#gluetun.log_level)",
 							"PORT_FORWARD_ONLY=\(_pf)",
-							"SERVER_COUNTRIES=\(strings.Join(#gluetun.countries, ","))",
+							if #gluetun.countries != _|_ {"SERVER_COUNTRIES=\(strings.Join(#gluetun.countries, ","))"},
+							if #gluetun.regions != _|_ {"SERVER_REGIONS=\(strings.Join(#gluetun.regions, ","))"},
+							if #gluetun.cities != _|_ {"SERVER_CITIES=\(strings.Join(#gluetun.cities, ","))"},
+							if #gluetun.hostnames != _|_ {"SERVER_HOSTNAMES=\(strings.Join(#gluetun.hostnames, ","))"},
+							if #gluetun.secure_core_only {"SECURE_CORE_ONLY=on"},
 							"VPN_PORT_FORWARDING=\(_pf)",
 							"VPN_SERVICE_PROVIDER=\(#gluetun.provider)",
 							"VPN_TYPE=wireguard",
