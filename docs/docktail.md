@@ -34,22 +34,24 @@ Label=docktail.tags.0=tag:web
 | `enable` | `bool` | Enable Tailscale Funnel |
 | `port` | `number` | Backend container port for Funnel traffic |
 | `funnel-port?` | `number` | Public Funnel port (HTTPS/HTTP Funnel supports 443, 8443, or 10000) |
-| `protocol?` | `string` | `http`, `https`, `tcp`, or `tls-terminated-tcp` |
-| `path?` | `string` | Funnel path, must start with `/` |
+| `protocol?` | enum | `http`, `https`, `tcp`, or `tls-terminated-tcp` |
+| `path?` | `string` | Funnel path, `http`/`https` only, must start with `/` |
 
 ### `service?`
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `enable` | `string` | Enable a private Tailscale service for the container |
+| `enable` | `bool` | Enable a private Tailscale service for the container |
 | `name` | `string` | Service name, such as `web` or `api` |
 | `port` | `number` | Backend container port to proxy to |
 | `description?` | `string` | Shown in the Tailscale admin panel (requires API credentials) |
 | `direct?` | `bool` | Proxy directly to the container IP instead of a published host port |
 | `network?` | `string` | Docker network used for direct container IP detection |
-| `protocol?` | `string` | Backend protocol |
+| `protocol?` | enum | Backend protocol: `http`, `https`, `https+insecure`, `tcp`, `tls-terminated-tcp` |
 | `service-port?` | `number` | Port Tailscale listens on |
-| `service-protocol?` | `string` | Tailscale-facing protocol |
+| `service-protocol?` | enum | Tailscale-facing protocol: `http`, `https`, `tcp`, `tls-terminated-tcp` |
+| `path?` | `string` | HTTP(S) Serve mount point, default `/`; rejected on tcp service protocols |
+| `proxy-protocol?` | `1 \| 2` | PROXY protocol on TCP forwards; `tcp`/`tls-terminated-tcp` only, backend must understand it |
 
 ### `tags?`
 

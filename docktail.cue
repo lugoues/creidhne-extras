@@ -1,27 +1,37 @@
 package creidhne_extras
 
+// Protocol vocabularies from docktail's docs (docktail.org/docs, "Supported
+// Protocols"). https+insecure is backend-only; the funnel set is the
+// tailnet-facing one.
+#DocktailBackendProtocol: "http" | "https" | "https+insecure" | "tcp" | "tls-terminated-tcp"
+#DocktailServiceProtocol: "http" | "https" | "tcp" | "tls-terminated-tcp"
+
 #DockTailSpec: #StringLabelList & {
 	prefix: "docktail"
 	#value: {
 		service?: {
 			// Enable a private Tailscale service for the container.
-			"enable": string
+			"enable": bool
 			// Service name, such as web or api.
 			"name": string
 			// Backend container port to proxy to.
 			"port": number
 			// Human-readable description shown for the service in the Tailscale admin panel. Requires API credentials (synced to the Service definition's comment).
 			"description"?: string
-			// No 	true 	Proxy directly to container IP instead of requiring a published host port.
+			// Proxy directly to the container IP instead of a published host port (docktail default: true).
 			"direct"?: bool
 			// Docker network used for direct container IP detection.
 			"network"?: string
 			// Backend protocol.
-			"protocol"?: string
+			"protocol"?: #DocktailBackendProtocol
 			// Port Tailscale listens on.
 			"service-port"?: number
 			// Tailscale-facing protocol.
-			"service-protocol"?: string
+			"service-protocol"?: #DocktailServiceProtocol
+			// HTTP(S) Serve mount point, default "/". Rejected on tcp service protocols.
+			"path"?: string & =~"^/"
+			// PROXY protocol version on TCP forwards; tcp/tls-terminated-tcp only.
+			"proxy-protocol"?: 1 | 2
 		}
 		tags?: [string]
 		funnel: {
@@ -31,10 +41,10 @@ package creidhne_extras
 			"port": number
 			// Public Funnel port. HTTPS/HTTP Funnel supports 443, 8443, or 10000.
 			"funnel-port"?: number
-			// Funnel protocol: http, https, tcp, or tls-terminated-tcp.
-			"protocol"?: string
-			// Funnel path. Must start with /.
-			"path"?: string
+			// Funnel protocol.
+			"protocol"?: #DocktailServiceProtocol
+			// Funnel path, http/https only. Must start with /.
+			"path"?: string & =~"^/"
 		}
 	}
 }

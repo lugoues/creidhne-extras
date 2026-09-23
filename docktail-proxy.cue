@@ -67,6 +67,15 @@ import (
 			])) > 0
 			why: "splice #tailnet.#label into a container or pod Label list; without it docktail never discovers the service"
 		}
+		// Docktail rejects these at runtime; fail at validate instead.
+		"docktail-proxy/path-http-only": {
+			assert: len([for k, s in #tailnet.services if s.path != _|_ if s._tcpFacing {k}]) == 0
+			why: "path applies to http/https service protocols only; docktail rejects it on tcp and tls-terminated-tcp"
+		}
+		"docktail-proxy/proxy-protocol-tcp-only": {
+			assert: len([for k, s in #tailnet.services if s.proxyProtocol != _|_ if !s._tcpFacing {k}]) == 0
+			why: "proxyProtocol needs a tcp or tls-terminated-tcp service protocol (serviceProtocol, or a tcp backend protocol)"
+		}
 		...
 	}
 
@@ -141,11 +150,30 @@ import (
 			description?: string & !~"'"
 			// Backend protocol; omitted: docktail's smart default
 			// (https when port is 443, else http).
-			protocol?: "http" | "https" | "tcp"
+			protocol?: #DocktailBackendProtocol
 			// Tailscale-facing port; omitted: 443 for https, else 80.
 			servicePort?: int & >0 & <65536
-			// Tailscale-facing protocol; omitted: docktail's smart default.
-			serviceProtocol?: "http" | "https" | "tcp"
+			// Tailscale-facing protocol; omitted: docktail's smart default
+			// (https when servicePort is 443, tcp when protocol is a tcp
+			// kind, else http).
+			serviceProtocol?: #DocktailServiceProtocol
+			// HTTP(S) Serve mount point (docktail.service.path); omitted: "/".
+			// http/https service protocols only (checked below).
+			path?: string & =~"^/"
+			// PROXY protocol version prepended on TCP forwards so the backend
+			// sees the tailnet client address. tcp/tls-terminated-tcp service
+			// protocols only (checked below), and the backend must understand
+			// the header: sending it to Postgres, Redis, or a raw TCP app
+			// breaks the connection. Prefer 2.
+			proxyProtocol?: 1 | 2
+
+			// Whether the tailnet-facing side is a tcp kind, following
+			// docktail's smart default when serviceProtocol is omitted.
+			_tcpFacing: [
+				if serviceProtocol != _|_ {serviceProtocol == "tcp" || serviceProtocol == "tls-terminated-tcp"},
+				if protocol != _|_ {protocol == "tcp" || protocol == "tls-terminated-tcp"},
+				false,
+			][0]
 		}
 
 		_ordered: list.SortStrings([for k, _ in services {k}])
@@ -165,6 +193,8 @@ import (
 						[if s.protocol != _|_ {"\(p)protocol=\(s.protocol)"}],
 						[if s.servicePort != _|_ {"\(p)service-port=\(s.servicePort)"}],
 						[if s.serviceProtocol != _|_ {"\(p)service-protocol=\(s.serviceProtocol)"}],
+						[if s.path != _|_ {"\(p)path=\(s.path)"}],
+						[if s.proxyProtocol != _|_ {"\(p)proxy-protocol=\(s.proxyProtocol)"}],
 					])
 				}],
 			[[if extraLabels != _|_ for l in extraLabels {l}]],
