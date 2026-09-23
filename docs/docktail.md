@@ -22,7 +22,7 @@ Renders:
 Label=docktail.funnel.enable=true
 Label=docktail.funnel.port=8080
 Label=docktail.funnel.protocol=https
-Label=docktail.tags.0=tag:web
+Label=docktail.tags=tag:web
 ```
 
 ## Schema (`#value`)
@@ -55,8 +55,8 @@ Label=docktail.tags.0=tag:web
 
 ### `tags?`
 
-`[string]`: currently exactly one tag (widen to `[...string]` for several).
-Tags render with indexed keys: `docktail.tags.0=tag:web`.
+`[...string]`: Tailscale service tags, rendered as one comma-joined label
+(`docktail.tags=tag:web,tag:internal`), which is the form docktail reads.
 
 ## Caveats
 
