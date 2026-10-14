@@ -516,6 +516,12 @@ import (
 				Unit: {
 					Requires: [#gluetun._uplinkService]
 					After: [#gluetun._uplinkService]
+					// RestartSec=5s spaces five attempts over 20s, past systemd's
+					// default 10s limiter window, so without this a broken tunnel
+					// flaps in activating (auto-restart) forever instead of
+					// landing in failed where status shows it. Five tries in five
+					// minutes, then give up.
+					StartLimitIntervalSec: "300s"
 					...
 				}
 
@@ -627,7 +633,17 @@ import (
 				}
 
 				Service: {
-					Restart:      "on-failure"
+					Restart: "on-failure"
+					// Notify=healthy withholds READY until the first healthcheck
+					// passes. The 120s HealthStartPeriod covers a slow tunnel
+					// handshake, so start-up is bounded by that plus a
+					// HealthInterval or two; 90s would kill a healthy but slow
+					// connect. Explicit rather than inherited: the host's
+					// DefaultTimeoutStartSec is not ours to assume.
+					TimeoutStartSec: "180s"
+					// systemd's 100ms default restarts a crash loop ~10x a second,
+					// which floods the journal and buries the actual error.
+					RestartSec:   "5s"
 					Type:         "notify"
 					NotifyAccess: "all"
 					...
